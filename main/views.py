@@ -1,0 +1,397 @@
+from django.db.models import Q, Sum, F
+from django.utils import timezone
+
+from rest_framework import status, viewsets, mixins
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
+from rest_framework.authtoken.models import Token
+
+from .models import User, Province, Route, Transport, DriverProfile, PassengerProfile, Ride
+from .serializers import (
+    ProvinceSerializer,
+    RouteSerializer,
+    TransportSerializer,
+    DriverProfileSerializer,
+    PassengerProfileSerializer,
+    RideSerializer,
+)
+# from .auth_serializers import (
+#     RegisterPassengerSerializer,
+#     RegisterDriverSerializer,
+#     LoginSerializer,
+#     ChangePasswordSerializer,
+#     RideSearchSerializer,
+# )
+# from .permissions import IsDriver, IsPassenger, IsRideParticipant
+
+
+def _token_response(user):
+    token, _ = Token.objects.get_or_create(user=user)
+    return {
+        'token':    token.key,
+        'user_id':  user.id,
+        'username': user.username,
+        'role':     user.role,
+    }
+
+
+class AuthViewSet(viewsets.GenericViewSet):
+    permission_classes = [AllowAny]
+
+    @action(detail=False, methods=['post'], url_path='register/passenger')
+    def register_passenger(self, request):
+        s = RegisterPassengerSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        user = s.save()
+        return Response(_token_response(user), status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='register/driver')
+    def register_driver(self, request):
+        s = RegisterDriverSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        user = s.save()
+        return Response(_token_response(user), status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'])
+    def login(self, request):
+        s = LoginSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        return Response(_token_response(s.validated_data['user']))
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def logout(self, request):
+        # Delete the token — next request with the same key will get 401
+        request.user.auth_token.delete()
+        return Response({'detail': 'Logged out.'}, status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['post'], url_path='change-password',
+            permission_classes=[IsAuthenticated])
+    def change_password(self, request):
+        s = ChangePasswordSerializer(data=request.data, context={'request': request})
+        s.is_valid(raise_exception=True)
+        s.save()
+        return Response({'detail': 'Password changed.'})
+
+
+class ProvinceViewSet(viewsets.ModelViewSet):
+    queryset           = Province.objects.all().order_by('name')
+    serializer_class   = ProvinceSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [AllowAny()]
+        return [IsAdminUser()]
+
+
+class RouteViewSet(viewsets.ModelViewSet):
+    serializer_class = RouteSerializer
+
+    def get_queryset(self):
+        qs          = Route.objects.all().order_by('name')
+        province_id = self.request.query_params.get('province')
+        if province_id:
+            qs = qs.filter(province_id=province_id)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [AllowAny()]
+        return [IsAdminUser()]
+
+
+class TransportViewSet(viewsets.GenericViewSet,
+                       mixins.ListModelMixin,
+                       mixins.RetrieveModelMixin):
+    serializer_class = TransportSerializer
+
+    def get_queryset(self):
+        qs     = Transport.objects.all()
+        params = self.request.query_params
+        if params.get('from_province'):
+            qs = qs.filter(from_province_id=params['from_province'])
+        if params.get('to_province'):
+            qs = qs.filter(to_province_id=params['to_province'])
+        if params.get('type'):
+            qs = qs.filter(type=params['type'])
+        if params.get('route'):
+            qs = qs.filter(route_id=params['route'])
+        return qs
+
+    def get_permissions(self):
+        if self.action == 'me':
+            return [IsAuthenticated(), IsDriver()]
+        return [AllowAny()]
+
+    @action(detail=False, methods=['get', 'put', 'patch'])
+    def me(self, request):
+        try:
+            transport = Transport.objects.get(driver=request.user)
+        except Transport.DoesNotExist:
+            return Response({'detail': 'No transport registered.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.method == 'GET':
+            return Response(TransportSerializer(transport).data)
+
+        # Force driver to always be the current user
+        data = {**request.data, 'driver': request.user.id}
+        s = TransportSerializer(transport, data=data, partial=(request.method == 'PATCH'))
+        s.is_valid(raise_exception=True)
+        s.save()
+        return Response(s.data)
+
+
+class DriverViewSet(viewsets.GenericViewSet,
+                    mixins.ListModelMixin,
+                    mixins.RetrieveModelMixin):
+    serializer_class = DriverProfileSerializer
+
+    def get_queryset(self):
+        qs     = DriverProfile.objects.all().order_by('-avg_rating')
+        params = self.request.query_params
+        if params.get('from_province'):
+            qs = qs.filter(driver__transport__from_province_id=params['from_province'])
+        if params.get('to_province'):
+            qs = qs.filter(driver__transport__to_province_id=params['to_province'])
+        if params.get('min_rating'):
+            qs = qs.filter(avg_rating__gte=params['min_rating'])
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [AllowAny()]
+        return [IsAuthenticated(), IsDriver()]
+
+    @action(detail=False, methods=['get', 'patch'])
+    def me(self, request):
+        profile = request.user.driverprofile
+
+        if request.method == 'GET':
+            return Response(DriverProfileSerializer(profile).data)
+
+        # Strip system-managed fields
+        safe = {k: v for k, v in request.data.items()
+                if k not in ('avg_rating', 'total_trips', 'joining_date', 'driver')}
+        s = DriverProfileSerializer(profile, data=safe, partial=True)
+        s.is_valid(raise_exception=True)
+        s.save()
+        return Response(s.data)
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        rides = Ride.objects.filter(driver=request.user)
+        return Response({
+            'total_rides':    rides.count(),
+            'completed':      rides.filter(status=Ride.Status.COMPLETED).count(),
+            'cancelled':      rides.filter(status=Ride.Status.CANCELLED).count(),
+            'pending':        rides.filter(status=Ride.Status.PENDING).count(),
+            'in_progress':    rides.filter(status=Ride.Status.IN_PROGRESS).count(),
+            'total_earnings': rides.filter(
+                                  status=Ride.Status.COMPLETED,
+                                  payment_status=Ride.PaymentStatus.PAID,
+                              ).aggregate(total=Sum('price'))['total'] or 0,
+            'rides_today':    rides.filter(created_at__date=timezone.now().date()).count(),
+            'avg_rating':     getattr(getattr(request.user, 'driverprofile', None), 'avg_rating', 0),
+        })
+
+    @action(detail=False, methods=['get'])
+    def active(self, request):
+        rides = Ride.objects.filter(
+            driver=request.user,
+            status__in=[Ride.Status.PENDING, Ride.Status.CONFIRMED, Ride.Status.IN_PROGRESS],
+        ).order_by('departure_time')
+        return Response(RideSerializer(rides, many=True).data)
+
+
+class PassengerViewSet(viewsets.GenericViewSet):
+    serializer_class   = PassengerProfileSerializer
+    permission_classes = [IsAuthenticated, IsPassenger]
+
+    @action(detail=False, methods=['get', 'patch'])
+    def me(self, request):
+        profile = request.user.passengerprofile
+
+        if request.method == 'GET':
+            return Response(PassengerProfileSerializer(profile).data)
+
+        safe = {k: v for k, v in request.data.items()
+                if k not in ('total_trips', 'joining_date', 'passenger')}
+        s = PassengerProfileSerializer(profile, data=safe, partial=True)
+        s.is_valid(raise_exception=True)
+        s.save()
+        return Response(s.data)
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        rides = Ride.objects.filter(passenger=request.user)
+        return Response({
+            'total_rides': rides.count(),
+            'completed':   rides.filter(status=Ride.Status.COMPLETED).count(),
+            'cancelled':   rides.filter(status=Ride.Status.CANCELLED).count(),
+            'total_spent': rides.filter(
+                               status=Ride.Status.COMPLETED,
+                               payment_status=Ride.PaymentStatus.PAID,
+                           ).aggregate(total=Sum('price'))['total'] or 0,
+        })
+
+
+class RideViewSet(viewsets.GenericViewSet,
+                  mixins.ListModelMixin,
+                  mixins.RetrieveModelMixin,
+                  mixins.CreateModelMixin):
+    serializer_class = RideSerializer
+
+    def get_permissions(self):
+        if self.action == 'search':
+            return [AllowAny()]
+        if self.action == 'create':
+            return [IsAuthenticated(), IsPassenger()]
+        if self.action in ('update_status', 'payment'):
+            return [IsAuthenticated(), IsDriver()]
+        if self.action == 'cancel':
+            return [IsAuthenticated(), IsPassenger()]
+        return [IsAuthenticated()]
+
+    def get_queryset(self):
+        user   = self.request.user
+        status_filter = self.request.query_params.get('status')
+        qs = Ride.objects.filter(Q(driver=user) | Q(passenger=user)).order_by('-created_at')
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        return qs
+
+    # ── POST /api/rides/ ──────────────────────────────────────
+    def create(self, request, *args, **kwargs):
+        s = RideSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        data = s.validated_data
+
+        driver = data.get('driver')
+        if not driver or driver.role != User.ROLE.DRIVER:
+            return Response(
+                {'detail': 'Selected user is not a driver.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        conflict = Ride.objects.filter(
+            driver=driver,
+            seat=data['seat'],
+            departure_time=data['departure_time'],
+            status__in=[Ride.Status.PENDING, Ride.Status.CONFIRMED, Ride.Status.IN_PROGRESS],
+        ).exists()
+        if conflict:
+            return Response(
+                {'detail': 'That seat is already booked for this departure.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ride = s.save(
+            passenger=request.user,
+            status=Ride.Status.PENDING,
+            payment_status=Ride.PaymentStatus.UNPAID,
+        )
+        return Response(RideSerializer(ride).data, status=status.HTTP_201_CREATED)
+
+    # ── GET /api/rides/search/ ────────────────────────────────
+    @action(detail=False, methods=['get'])
+    def search(self, request):
+        s = RideSearchSerializer(data=request.query_params)
+        s.is_valid(raise_exception=True)
+        data = s.validated_data
+
+        transports = Transport.objects.all()
+        if data.get('from_province'):
+            transports = transports.filter(from_province_id=data['from_province'])
+        if data.get('to_province'):
+            transports = transports.filter(to_province_id=data['to_province'])
+        if data.get('route'):
+            transports = transports.filter(route_id=data['route'])
+        if data.get('car_type'):
+            transports = transports.filter(type=data['car_type'])
+        if data.get('date') and data.get('seat'):
+            busy_ids = Ride.objects.filter(
+                seat=data['seat'],
+                departure_time__date=data['date'],
+                status__in=[Ride.Status.CONFIRMED, Ride.Status.IN_PROGRESS],
+            ).values_list('driver_id', flat=True)
+            transports = transports.exclude(driver_id__in=busy_ids)
+
+        result = TransportSerializer(transports, many=True).data
+        return Response({'count': len(result), 'results': result})
+
+    # ── PATCH /api/rides/<pk>/status/ ─────────────────────────
+    TRANSITIONS = {
+        Ride.Status.PENDING:     [Ride.Status.CONFIRMED,   Ride.Status.CANCELLED],
+        Ride.Status.CONFIRMED:   [Ride.Status.IN_PROGRESS, Ride.Status.CANCELLED],
+        Ride.Status.IN_PROGRESS: [Ride.Status.COMPLETED],
+    }
+
+    @action(detail=True, methods=['patch'])
+    def status(self, request, pk=None):
+        try:
+            ride = Ride.objects.get(pk=pk, driver=request.user)
+        except Ride.DoesNotExist:
+            return Response({'detail': 'Ride not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        new_status = request.data.get('status')
+        allowed    = self.TRANSITIONS.get(ride.status, [])
+
+        if new_status not in allowed:
+            return Response(
+                {'detail': f"Cannot transition '{ride.status}' → '{new_status}'.",
+                 'allowed': allowed},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ride.status = new_status
+        ride.save(update_fields=['status', 'updated_at'])
+
+        if new_status == Ride.Status.COMPLETED:
+            DriverProfile.objects.filter(driver=ride.driver).update(total_trips=F('total_trips') + 1)
+            PassengerProfile.objects.filter(passenger=ride.passenger).update(total_trips=F('total_trips') + 1)
+
+        return Response(RideSerializer(ride).data)
+
+    # ── POST /api/rides/<pk>/cancel/ ──────────────────────────
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        try:
+            ride = Ride.objects.get(pk=pk, passenger=request.user)
+        except Ride.DoesNotExist:
+            return Response({'detail': 'Ride not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if ride.status not in [Ride.Status.PENDING, Ride.Status.CONFIRMED]:
+            return Response(
+                {'detail': f"Cannot cancel a ride with status '{ride.status}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ride.status = Ride.Status.CANCELLED
+        ride.save(update_fields=['status', 'updated_at'])
+        return Response(RideSerializer(ride).data)
+
+    # ── PATCH /api/rides/<pk>/payment/ ────────────────────────
+    @action(detail=True, methods=['patch'])
+    def payment(self, request, pk=None):
+        try:
+            ride = Ride.objects.get(pk=pk, driver=request.user)
+        except Ride.DoesNotExist:
+            return Response({'detail': 'Ride not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if ride.status != Ride.Status.COMPLETED:
+            return Response(
+                {'detail': 'Payment can only be updated after the ride is completed.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        allowed_fields = {'payment_status', 'payment_method'}
+        changed = []
+        for field, value in request.data.items():
+            if field in allowed_fields:
+                setattr(ride, field, value)
+                changed.append(field)
+
+        if changed:
+            ride.save(update_fields=changed + ['updated_at'])
+
+        return Response(RideSerializer(ride).data)
