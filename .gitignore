@@ -1,0 +1,10 @@
+db.sqlite3
+.env
+__pycache__/
+*.pyc
+*.pyo
+media/
+staticfiles/
+.idea/
+venv/
+.DS_Store

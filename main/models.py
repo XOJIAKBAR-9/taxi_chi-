@@ -36,7 +36,6 @@ class Transport(models.Model):
         COMFORT = "COMFORT", "Comfort"
         LUXURY = "LUXURY", "Luxury"
 
-    # Changed related_name to be specific to Transport
     driver = models.OneToOneField(User, on_delete=models.CASCADE, related_name="transport_info")
     from_province = models.ForeignKey(Province, on_delete=models.CASCADE, related_name="transports_from")
     to_province = models.ForeignKey(Province, on_delete=models.CASCADE, related_name="transports_to")
@@ -50,19 +49,18 @@ class Transport(models.Model):
 
 
 class DriverProfile(models.Model):
-    # Changed related_name to be specific to the Profile
     driver = models.OneToOneField(User, on_delete=models.CASCADE, related_name="driver_profile")
     avatar = models.ImageField(upload_to='drivers/avatars/', blank=True)
     avg_rating = models.FloatField(validators=[MinValueValidator(0.0), MaxValueValidator(5.0)])
     total_trips = models.IntegerField(default=0)
     joining_date = models.DateField()
+    is_verified = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.driver.username} - {self.avg_rating}"
 
 
 class PassengerProfile(models.Model):
-    # Changed related_name to lowercase/standard convention
     passenger = models.OneToOneField(User, on_delete=models.CASCADE, related_name="passenger_profile")
     avatar = models.ImageField(upload_to='passengers/avatars/', blank=True)
     total_trips = models.IntegerField(default=0)
@@ -70,6 +68,27 @@ class PassengerProfile(models.Model):
 
     def __str__(self):
         return f"{self.passenger.username}"
+
+
+class DriverDocument(models.Model):
+    class DocType(models.TextChoices):
+        LICENSE_WITH_ID = 'LICENSE_WITH_ID', 'Driver License with Self ID Card'
+
+    class Status(models.TextChoices):
+        PENDING = 'PENDING', 'Pending Review'
+        APPROVED = 'APPROVED', 'Approved'
+        REJECTED = 'REJECTED', 'Rejected'
+
+    driver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='documents')
+    doc_type = models.CharField(max_length=20, choices=DocType.choices, default=DocType.LICENSE_WITH_ID)
+    file = models.FileField(upload_to='driver_docs/')
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    admin_note = models.TextField(blank=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.driver.username} - {self.doc_type} ({self.status})"
 
 
 class Ride(models.Model):
@@ -92,12 +111,10 @@ class Ride(models.Model):
         UNPAID = "unpaid", "Unpaid"
         PAID = "paid", "Paid"
 
-    # Unique related_names for Ride history
     driver = models.ForeignKey(User, on_delete=models.CASCADE, related_name="rides_given")
     passenger = models.ForeignKey(User, on_delete=models.CASCADE, related_name="rides_taken")
 
     route = models.ForeignKey(Route, on_delete=models.CASCADE)
-    # Unique related_names for Province lookups
     from_province = models.ForeignKey(Province, on_delete=models.CASCADE, related_name="rides_starting_at")
     to_province = models.ForeignKey(Province, on_delete=models.CASCADE, related_name="rides_ending_at")
 
@@ -106,8 +123,21 @@ class Ride(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2)
     payment_method = models.CharField(max_length=20, choices=PaymentMethod.choices)
     payment_status = models.CharField(max_length=20, choices=PaymentStatus.choices)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.passenger.username} - from {self.from_province} to {self.to_province}"
+
+
+class Rating(models.Model):
+    ride = models.OneToOneField(Ride, on_delete=models.CASCADE, related_name='rating')
+    passenger = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ratings_given')
+    driver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ratings_received')
+    stars = models.PositiveSmallIntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
+    comment = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.passenger} → {self.driver}: {self.stars}★"
