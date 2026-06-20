@@ -6,6 +6,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
+from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 
 from .models import User, Province, Route, Transport, DriverProfile, PassengerProfile, Ride, Rating, DriverDocument
 from .serializers import (
@@ -41,6 +43,7 @@ class AuthViewSet(viewsets.GenericViewSet):
             'role': user.role,
         }
 
+    @extend_schema(request=RegisterPassengerSerializer, responses=RegisterPassengerSerializer)
     @action(detail=False, methods=['post'], url_path='register/passenger')
     def register_passenger(self, request):
         s = RegisterPassengerSerializer(data=request.data)
@@ -48,6 +51,7 @@ class AuthViewSet(viewsets.GenericViewSet):
         user = s.save()
         return Response(self._get_tokens_for_user(user), status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=RegisterDriverSerializer, responses=RegisterDriverSerializer)
     @action(detail=False, methods=['post'], url_path='register/driver')
     def register_driver(self, request):
         s = RegisterDriverSerializer(data=request.data)
@@ -55,6 +59,7 @@ class AuthViewSet(viewsets.GenericViewSet):
         user = s.save()
         return Response(self._get_tokens_for_user(user), status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=LoginSerializer, responses=LoginSerializer)
     @action(detail=False, methods=['post'])
     def login(self, request):
         s = LoginSerializer(data=request.data)
@@ -74,6 +79,7 @@ class AuthViewSet(viewsets.GenericViewSet):
         except Exception:
             return Response({"detail": "Invalid token."}, status=status.HTTP_400_BAD_REQUEST)
 
+    @extend_schema(request=ChangePasswordSerializer)
     @action(detail=False, methods=['post'], url_path='change-password',
             permission_classes=[IsAuthenticated])
     def change_password(self, request):
@@ -96,6 +102,14 @@ class ProvinceViewSet(viewsets.ModelViewSet):
 class RouteViewSet(viewsets.ModelViewSet):
     serializer_class = RouteSerializer
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='province', description='Filter by province ID', required=False, type=OpenApiTypes.INT),
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
     def get_queryset(self):
         qs          = Route.objects.all().order_by('name')
         province_id = self.request.query_params.get('province')
@@ -113,6 +127,17 @@ class TransportViewSet(viewsets.GenericViewSet,
                        mixins.ListModelMixin,
                        mixins.RetrieveModelMixin):
     serializer_class = TransportSerializer
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='from_province', description='Filter by from province ID', required=False, type=OpenApiTypes.INT),
+            OpenApiParameter(name='to_province', description='Filter by to province ID', required=False, type=OpenApiTypes.INT),
+            OpenApiParameter(name='type', description='Filter by type (ORDINARY, COMFORT, LUXURY)', required=False, type=OpenApiTypes.STR),
+            OpenApiParameter(name='route', description='Filter by route ID', required=False, type=OpenApiTypes.INT),
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
     def get_queryset(self):
         qs     = Transport.objects.all()
@@ -153,6 +178,16 @@ class DriverViewSet(viewsets.GenericViewSet,
                     mixins.ListModelMixin,
                     mixins.RetrieveModelMixin):
     serializer_class = DriverProfileSerializer
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='from_province', description='Filter by from province ID', required=False, type=OpenApiTypes.INT),
+            OpenApiParameter(name='to_province', description='Filter by to province ID', required=False, type=OpenApiTypes.INT),
+            OpenApiParameter(name='min_rating', description='Filter by minimum rating', required=False, type=OpenApiTypes.FLOAT),
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
     def get_queryset(self):
         qs     = DriverProfile.objects.all().order_by('-avg_rating')
@@ -248,6 +283,14 @@ class RideViewSet(viewsets.GenericViewSet,
                   mixins.CreateModelMixin):
     serializer_class = RideSerializer
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='status', description='Filter by status (pending, confirmed, in_progress, completed, cancelled)', required=False, type=OpenApiTypes.STR),
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
     def get_permissions(self):
         if self.action == 'search':
             return [AllowAny()]
@@ -298,6 +341,16 @@ class RideViewSet(viewsets.GenericViewSet,
         )
         return Response(RideSerializer(ride).data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='from_province', description='Filter by from province ID', required=False, type=OpenApiTypes.INT),
+            OpenApiParameter(name='to_province', description='Filter by to province ID', required=False, type=OpenApiTypes.INT),
+            OpenApiParameter(name='route', description='Filter by route ID', required=False, type=OpenApiTypes.INT),
+            OpenApiParameter(name='car_type', description='Filter by car type (ORDINARY, COMFORT, LUXURY)', required=False, type=OpenApiTypes.STR),
+            OpenApiParameter(name='date', description='Filter by date (YYYY-MM-DD)', required=False, type=OpenApiTypes.DATE),
+            OpenApiParameter(name='seat', description='Filter by seat (FRONT, BACK)', required=False, type=OpenApiTypes.STR),
+        ]
+    )
     @action(detail=False, methods=['get'])
     def search(self, request):
         s = RideSearchSerializer(data=request.query_params)
