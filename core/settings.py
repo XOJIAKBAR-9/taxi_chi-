@@ -60,12 +60,16 @@ TEMPLATES = [
 WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
-    'default': config(
-        'DATABASE_URL',
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
-        cast=dj_database_url.parse
-    )
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'taxici-api',        # The name you gave the DB in pgAdmin
+        'USER': 'postgres',            # Your PostgreSQL username (default is postgres)
+        'PASSWORD': '123',   # Your PostgreSQL master password
+        'HOST': '127.0.0.1',           # Use 'localhost' or '127.0.0.1' for a local database
+        'PORT': '5432',                # The default PostgreSQL port
+    }
 }
+
 
 AUTH_USER_MODEL = 'main.User'
 
