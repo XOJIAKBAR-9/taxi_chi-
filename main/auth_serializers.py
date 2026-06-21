@@ -48,9 +48,8 @@ class RegisterDriverSerializer(serializers.Serializer):
     transport_model = serializers.CharField(max_length=255)
     transport_year = serializers.IntegerField()
     transport_type = serializers.ChoiceField(choices=Transport.TYPE.choices)
-    from_province = serializers.PrimaryKeyRelatedField(queryset=Province.objects.all())
-    to_province = serializers.PrimaryKeyRelatedField(queryset=Province.objects.all())
-    route = serializers.PrimaryKeyRelatedField(queryset=Route.objects.all())
+    from_province = serializers.CharField(max_length=255)
+    to_province = serializers.CharField(max_length=255)
 
     def validate(self, data):
         if data['password'] != data['password2']:
@@ -69,7 +68,6 @@ class RegisterDriverSerializer(serializers.Serializer):
         transport_type = validated_data.pop('transport_type')
         from_province = validated_data.pop('from_province')
         to_province = validated_data.pop('to_province')
-        route = validated_data.pop('route')
         
         validated_data.pop('password2')
         password = validated_data.pop('password')
@@ -93,8 +91,7 @@ class RegisterDriverSerializer(serializers.Serializer):
             year=transport_year,
             type=transport_type,
             from_province=from_province,
-            to_province=to_province,
-            route=route
+            to_province=to_province
         )
         return user
 

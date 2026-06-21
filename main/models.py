@@ -37,9 +37,9 @@ class Transport(models.Model):
         LUXURY = "LUXURY", "Luxury"
 
     driver = models.OneToOneField(User, on_delete=models.CASCADE, related_name="transport_info")
-    from_province = models.ForeignKey(Province, on_delete=models.CASCADE, related_name="transports_from")
-    to_province = models.ForeignKey(Province, on_delete=models.CASCADE, related_name="transports_to")
-    route = models.ForeignKey(Route, on_delete=models.CASCADE)
+    from_province = models.CharField(max_length=255)
+    to_province = models.CharField(max_length=255)
+    route = models.ForeignKey(Route, on_delete=models.CASCADE, null=True, blank=True)
     model = models.CharField(max_length=255)
     year = models.IntegerField()
     type = models.CharField(max_length=20, choices=TYPE.choices)
