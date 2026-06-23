@@ -42,11 +42,14 @@ class AuthViewSet(viewsets.GenericViewSet):
     def _get_tokens_for_user(self, user):
         refresh = RefreshToken.for_user(user)
         return {
-            'refresh': str(refresh),
-            'access': str(refresh.access_token),
-            'user_id': user.id,
-            'username': user.username,
-            'role': user.role,
+            'refresh':    str(refresh),
+            'access':     str(refresh.access_token),
+            'user_id':    user.id,
+            'username':   user.username,
+            'role':       user.role,
+            'first_name': user.first_name,
+            'last_name':  user.last_name,
+            'phone':      user.phone,
         }
 
     @extend_schema(request=RegisterPassengerSerializer, responses=RegisterPassengerSerializer)

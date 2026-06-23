@@ -166,6 +166,9 @@ const app = {
       localStorage.setItem('user_id',       res.user_id);
       localStorage.setItem('username',      res.username);
       localStorage.setItem('role',          res.role);
+      localStorage.setItem('phone',         res.phone || phone);
+      localStorage.setItem('first_name',    res.first_name || '');
+      localStorage.setItem('last_name',     res.last_name  || '');
       this.enterApp();
     }
   },
@@ -208,6 +211,9 @@ const app = {
       localStorage.setItem('user_id',       res.user_id);
       localStorage.setItem('username',      res.username);
       localStorage.setItem('role',          res.role);
+      localStorage.setItem('phone',         res.phone || phone);
+      localStorage.setItem('first_name',    res.first_name || first_name);
+      localStorage.setItem('last_name',     res.last_name  || last_name);
       this.enterApp();
     }
   },
@@ -261,6 +267,9 @@ const app = {
       localStorage.setItem('user_id',       res.user_id);
       localStorage.setItem('username',      res.username);
       localStorage.setItem('role',          res.role);
+      localStorage.setItem('phone',         res.phone || phone);
+      localStorage.setItem('first_name',    res.first_name || first_name);
+      localStorage.setItem('last_name',     res.last_name  || last_name);
       this.enterApp();
     }
   },
@@ -269,7 +278,7 @@ const app = {
   // LOGOUT
   // --------------------------------------------------
   handleLogout() {
-    ['access_token','refresh_token','user_id','username','role'].forEach(k => localStorage.removeItem(k));
+    ['access_token','refresh_token','user_id','username','role','phone','first_name','last_name'].forEach(k => localStorage.removeItem(k));
     this.currentUser = null;
     this.currentRide = null;
     if (this.locationPollTimer) clearTimeout(this.locationPollTimer);
@@ -581,35 +590,233 @@ const app = {
   // PROFILE
   // --------------------------------------------------
   async loadProfile() {
-    const username = localStorage.getItem('username') || '—';
-    const role     = localStorage.getItem('role') || '—';
-    const initials = username.slice(0, 2).toUpperCase();
+    const role       = localStorage.getItem('role') || 'PASSENGER';
+    const firstName  = localStorage.getItem('first_name') || '';
+    const lastName   = localStorage.getItem('last_name')  || '';
+    const phone      = localStorage.getItem('phone') || '';
 
+    // Build display name — fallback to phone if no name provided
+    const displayName = [firstName, lastName].filter(Boolean).join(' ') || phone || '—';
+    // Initials from real name (or first 2 chars of phone)
+    const initials = firstName && lastName
+      ? (firstName[0] + lastName[0]).toUpperCase()
+      : (firstName ? firstName.slice(0, 2).toUpperCase() : (phone.replace(/\D/g, '').slice(-2) || '--'));
+
+    // ── Always reset driver-only DOM sections first ──────────────────────────
+    // This prevents data from a previous driver session leaking into a passenger view
+    document.getElementById('online-toggle-btn').style.display        = 'none';
+    document.getElementById('profile-rating-pill').style.display      = 'none';
+    document.getElementById('profile-vehicle-card').style.display     = 'none';
+    document.getElementById('profile-docs-card').style.display        = 'none';
+    document.getElementById('profile-online-bar').classList.remove('active');
+    document.getElementById('profile-identity-card').classList.remove('profile-identity-card--online');
+    // ── Always reset passenger-only DOM sections ─────────────────────────────
+    const passengerSection = document.getElementById('profile-passenger-section');
+    if (passengerSection) passengerSection.style.display = 'none';
+
+    // Populate identity card
+    const h3  = document.getElementById('profile-username');
+    const pill = document.getElementById('profile-rating-pill');
+    h3.textContent = displayName + ' ';
+    h3.appendChild(pill);
     document.getElementById('profile-avatar-initials').textContent = initials;
-    document.getElementById('profile-username').textContent = username;
-    document.getElementById('profile-role').textContent = 'Role: ' + role;
+    document.getElementById('profile-phone').textContent = phone;
+    document.getElementById('profile-role-text').textContent = role === 'DRIVER' ? 'Pro Driver' : 'Passenger';
 
-    // Load stats
     this.loading(true);
-    let statsRes = null;
-    if (role === 'DRIVER') {
-      statsRes = await this.api('/drivers/stats/');
-      if (statsRes) {
-        document.getElementById('stat-total-rides').textContent  = statsRes.total_rides ?? 0;
-        document.getElementById('stat-completed').textContent    = statsRes.completed ?? 0;
-        document.getElementById('stat-extra').textContent        = '$' + (statsRes.total_earnings ?? 0);
-        document.getElementById('stat-extra-label').textContent  = 'Earnings';
+    try {
+
+      if (role === 'DRIVER') {
+        const [profileRes, statsRes, docsRes] = await Promise.all([
+          this.api('/drivers/me/'),
+          this.api('/drivers/stats/'),
+          this.api('/driver/documents/'),
+        ]);
+
+        if (profileRes) {
+          const rating = profileRes.avg_rating ?? 0;
+          document.getElementById('profile-rating-val').textContent = Number(rating).toFixed(1);
+          document.getElementById('profile-rating-pill').style.display = 'inline-flex';
+
+          this._driverIsOnline = !!profileRes.is_online;
+          this._updateOnlineToggle(this._driverIsOnline);
+          document.getElementById('online-toggle-btn').style.display = 'inline-flex';
+
+          if (profileRes.transport) {
+            const t = profileRes.transport;
+            document.getElementById('vehicle-model').textContent   = t.model + ' ' + (t.year || '');
+            document.getElementById('vehicle-details').textContent = t.type + ' • ' + t.from_province + ' → ' + t.to_province;
+            document.getElementById('profile-vehicle-card').style.display = 'flex';
+          }
+        }
+
+        if (statsRes) {
+          document.getElementById('stat-total-rides').textContent = statsRes.total_rides ?? 0;
+          document.getElementById('stat-completed').textContent   = statsRes.completed ?? 0;
+          document.getElementById('stat-extra').textContent       = '$' + (statsRes.total_earnings ?? 0);
+          document.getElementById('stat-extra-label').textContent = 'Total Earnings';
+        }
+
+        if (docsRes !== null) {
+          document.getElementById('profile-docs-card').style.display = 'block';
+          this._renderDocuments(docsRes);
+        }
+
+      } else {
+        // ── Passenger layout ────────────────────────────────────────────────
+        if (passengerSection) passengerSection.style.display = 'block';
+
+        const statsRes = await this.api('/passengers/stats/');
+        if (statsRes) {
+          document.getElementById('stat-total-rides').textContent = statsRes.total_rides ?? 0;
+          document.getElementById('stat-completed').textContent   = statsRes.completed ?? 0;
+          document.getElementById('stat-extra').textContent       = '$' + (statsRes.total_spent ?? 0);
+          document.getElementById('stat-extra-label').textContent = 'Total Spent';
+        }
       }
+
+    } catch (e) {
+      console.error('Profile load error:', e);
+      this.toast('Could not load profile data.', 'error');
+    } finally {
+      this.loading(false);
+    }
+  },
+
+  _updateOnlineToggle(isOnline) {
+    const btn   = document.getElementById('online-toggle-btn');
+    const label = document.getElementById('online-toggle-label');
+    const bar   = document.getElementById('profile-online-bar');
+    const card  = document.getElementById('profile-identity-card');
+
+    label.textContent = isOnline ? 'GO OFFLINE' : 'GO ONLINE';
+    btn.classList.toggle('online-toggle-btn--online', isOnline);
+    bar.classList.toggle('active', isOnline);
+    card.classList.toggle('profile-identity-card--online', isOnline);
+  },
+
+  async toggleOnline() {
+    this._driverIsOnline = !this._driverIsOnline;
+    this._updateOnlineToggle(this._driverIsOnline);
+    const res = await this.api('/drivers/me/', 'PATCH', { is_online: this._driverIsOnline });
+    if (!res) {
+      // revert on failure
+      this._driverIsOnline = !this._driverIsOnline;
+      this._updateOnlineToggle(this._driverIsOnline);
+      this.toast('Failed to update status', 'error');
     } else {
-      statsRes = await this.api('/passengers/stats/');
-      if (statsRes) {
-        document.getElementById('stat-total-rides').textContent  = statsRes.total_rides ?? 0;
-        document.getElementById('stat-completed').textContent    = statsRes.completed ?? 0;
-        document.getElementById('stat-extra').textContent        = '$' + (statsRes.total_spent ?? 0);
-        document.getElementById('stat-extra-label').textContent  = 'Total Spent';
+      this.toast(this._driverIsOnline ? 'You are now online — ready for trips!' : 'You are now offline.', 'info');
+    }
+  },
+
+  _renderDocuments(docs) {
+    const DOC_LABELS = {
+      LICENSE_WITH_ID:      'Driver License & ID Card',
+      VEHICLE_REGISTRATION: 'Vehicle Registration (Tech Passport)',
+      CAR_PHOTO:            'Car Interior / Exterior Photo',
+    };
+
+    // All known doc types for this app
+    const ALL_DOC_TYPES = ['LICENSE_WITH_ID', 'VEHICLE_REGISTRATION', 'CAR_PHOTO'];
+    const list = document.getElementById('profile-docs-list');
+    list.innerHTML = '';
+
+    let hasMissing = false;
+
+    ALL_DOC_TYPES.forEach(type => {
+      const found = docs.find(d => d.doc_type === type);
+      const label = DOC_LABELS[type] || type;
+      const item  = document.createElement('div');
+      item.className = 'doc-item';
+
+      if (!found) {
+        hasMissing = true;
+        item.className += ' doc-item--missing';
+        item.innerHTML = `
+          <div class="doc-item-left">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span>${label}</span>
+          </div>
+          <button class="doc-badge doc-badge--missing" onclick="app._triggerDocUpload('${type}')">Upload Now</button>`;
+      } else if (found.status === 'APPROVED') {
+        item.innerHTML = `
+          <div class="doc-item-left">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span>${label}</span>
+          </div>
+          <span class="doc-badge doc-badge--approved">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Verified
+          </span>`;
+      } else if (found.status === 'REJECTED') {
+        hasMissing = true;
+        item.className += ' doc-item--missing';
+        item.innerHTML = `
+          <div class="doc-item-left">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span>${label}<small style="color:var(--red);margin-left:6px;">${found.admin_note ? '— ' + found.admin_note : ''}</small></span>
+          </div>
+          <button class="doc-badge doc-badge--missing" onclick="app._triggerDocUpload('${type}')">Re-upload</button>`;
+      } else {
+        // PENDING
+        item.innerHTML = `
+          <div class="doc-item-left">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span>${label}</span>
+          </div>
+          <span class="doc-badge doc-badge--pending">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            Reviewing
+          </span>`;
       }
+
+      list.appendChild(item);
+    });
+
+    if (hasMissing) {
+      document.getElementById('doc-upload-area').style.display = 'block';
+    }
+  },
+
+  _currentUploadDocType: null,
+  _triggerDocUpload(docType) {
+    this._currentUploadDocType = docType;
+    document.getElementById('doc-file-input').click();
+  },
+
+  async uploadDocument(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const docType = this._currentUploadDocType || 'LICENSE_WITH_ID';
+    const token   = localStorage.getItem('token');
+
+    const form = new FormData();
+    form.append('file', file);
+    form.append('doc_type', docType);
+
+    this.loading(true);
+    try {
+      const res = await fetch('/api/driver/documents/', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token },
+        body: form,
+      });
+      if (res.ok) {
+        this.toast('Document uploaded — under review.', 'success');
+        // reload documents section
+        const docs = await this.api('/driver/documents/');
+        if (docs) this._renderDocuments(docs);
+        document.getElementById('doc-upload-area').style.display = 'none';
+      } else {
+        const err = await res.json().catch(() => ({}));
+        this.toast(this._parseErrors(err) || 'Upload failed.', 'error');
+      }
+    } catch (e) {
+      this.toast('Upload failed — check your connection.', 'error');
     }
     this.loading(false);
+    input.value = '';
   },
 };
 

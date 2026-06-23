@@ -31,11 +31,20 @@ class TransportSerializer(serializers.ModelSerializer):
 
 class DriverProfileSerializer(serializers.ModelSerializer):
     driver = serializers.CharField(source='driver.username', read_only=True)
+    transport = serializers.SerializerMethodField()
 
     class Meta:
         model = DriverProfile
-        fields = ['id', 'driver', 'avatar', 'avg_rating', 'total_trips', 'joining_date', 'is_verified']
+        fields = ['id', 'driver', 'avatar', 'avg_rating', 'total_trips', 'joining_date', 'is_verified', 'is_online', 'transport']
         read_only_fields = ['avg_rating', 'total_trips', 'joining_date', 'is_verified']
+
+    def get_transport(self, obj):
+        try:
+            t = obj.driver.transport_info
+            return {'model': t.model, 'year': t.year, 'type': t.type,
+                    'from_province': t.from_province, 'to_province': t.to_province}
+        except Exception:
+            return None
 
 class PassengerProfileSerializer(serializers.ModelSerializer):
     passenger = serializers.CharField(source='passenger.username', read_only=True)

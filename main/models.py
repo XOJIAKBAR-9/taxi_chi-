@@ -55,6 +55,7 @@ class DriverProfile(models.Model):
     total_trips = models.IntegerField(default=0)
     joining_date = models.DateField()
     is_verified = models.BooleanField(default=False)
+    is_online = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.driver.username} - {self.avg_rating}"
@@ -72,7 +73,9 @@ class PassengerProfile(models.Model):
 
 class DriverDocument(models.Model):
     class DocType(models.TextChoices):
-        LICENSE_WITH_ID = 'LICENSE_WITH_ID', 'Driver License with Self ID Card'
+        LICENSE_WITH_ID       = 'LICENSE_WITH_ID',       'Driver License with Self ID Card'
+        VEHICLE_REGISTRATION  = 'VEHICLE_REGISTRATION',  'Vehicle Registration (Tech Passport)'
+        CAR_PHOTO             = 'CAR_PHOTO',             'Car Interior / Exterior Photo'
 
     class Status(models.TextChoices):
         PENDING = 'PENDING', 'Pending Review'
@@ -80,7 +83,7 @@ class DriverDocument(models.Model):
         REJECTED = 'REJECTED', 'Rejected'
 
     driver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='documents')
-    doc_type = models.CharField(max_length=20, choices=DocType.choices, default=DocType.LICENSE_WITH_ID)
+    doc_type = models.CharField(max_length=25, choices=DocType.choices, default=DocType.LICENSE_WITH_ID)
     file = models.FileField(upload_to='driver_docs/')
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     admin_note = models.TextField(blank=True)
