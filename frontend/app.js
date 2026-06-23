@@ -1,0 +1,616 @@
+// ====================================================
+// TaxiChi — Full Backend Integration
+// ====================================================
+const API_BASE = 'http://localhost:8000/api';
+
+const app = {
+  currentUser: null,
+  currentRide: null,
+  selectedTransport: null,
+  trackingMap: null,
+  driverMarker: null,
+  locationPollTimer: null,
+
+  // --------------------------------------------------
+  // INIT
+  // --------------------------------------------------
+  init() {
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      this.enterApp();
+    } else {
+      this.showAuthView('login');
+    }
+  },
+
+  // --------------------------------------------------
+  // AUTH VIEW SWITCHING (login / signup-role / etc.)
+  // --------------------------------------------------
+  showAuthView(viewName) {
+    document.getElementById('navbar').style.display = 'none';
+    document.getElementById('app-views').style.display = 'none';
+    document.querySelectorAll('.view').forEach(v => { v.classList.remove('active'); v.style.display = ''; });
+    const v = document.getElementById('view-' + viewName);
+    if (v) { v.classList.add('active'); }
+  },
+
+  // --------------------------------------------------
+  // APP VIEW SWITCHING (home / book / track / etc.)
+  // --------------------------------------------------
+  showView(viewName) {
+    document.getElementById('navbar').style.display = 'block';
+    document.getElementById('app-views').style.display = 'block';
+    document.querySelectorAll('.view').forEach(v => { v.classList.remove('active'); v.style.display = ''; });
+    const v = document.getElementById('view-' + viewName);
+    if (v) { v.classList.add('active'); }
+
+    // Update active nav link
+    document.querySelectorAll('.nav-links a[data-view]').forEach(a => a.classList.remove('active'));
+    const navLink = document.querySelector(`.nav-links a[data-view="${viewName}"]`);
+    if (navLink) navLink.classList.add('active');
+
+    if (viewName === 'track')   this.loadActiveRide();
+    if (viewName === 'history') this.loadRideHistory();
+    if (viewName === 'profile') this.loadProfile();
+  },
+
+  enterApp() {
+    this.currentUser = {
+      id:       parseInt(localStorage.getItem('user_id')),
+      username: localStorage.getItem('username'),
+      role:     localStorage.getItem('role'),
+    };
+    this.showView('home');
+  },
+
+  // --------------------------------------------------
+  // API HELPER  (returns parsed JSON or null on error)
+  // --------------------------------------------------
+  async api(endpoint, method = 'GET', data = null, errorTarget = null) {
+    const token = localStorage.getItem('access_token');
+    const opts = {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+    };
+    if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+    if (data)  opts.body = JSON.stringify(data);
+
+    let res;
+    try {
+      res = await fetch(API_BASE + endpoint, opts);
+    } catch (e) {
+      this.showError(errorTarget, 'Network error — make sure the server is running.');
+      return null;
+    }
+
+    if (res.status === 401) { this.handleLogout(); return null; }
+    if (res.status === 204) return {};
+
+    const json = await res.json();
+    if (!res.ok) {
+      const msg = this._parseErrors(json);
+      this.showError(errorTarget, msg);
+      return null;
+    }
+    return json;
+  },
+
+  _parseErrors(json) {
+    if (typeof json === 'string') return json;
+    if (Array.isArray(json))     return json.join(' ');
+    if (typeof json === 'object') {
+      return Object.entries(json)
+        .map(([k, v]) => {
+          const vals = Array.isArray(v) ? v : [v];
+          // skip technical key names for non_field_errors
+          if (k === 'non_field_errors' || k === 'detail') return vals.join(' ');
+          return vals.join(' ');
+        })
+        .join('  ');
+    }
+    return String(json);
+  },
+
+  // Show error inline under a form (pass element id string) or as toast
+  showError(targetId, msg) {
+    if (targetId) {
+      const el = document.getElementById(targetId);
+      if (el) { el.textContent = msg; el.style.display = 'block'; return; }
+    }
+    this.toast(msg, 'error');
+  },
+
+  clearError(targetId) {
+    const el = document.getElementById(targetId);
+    if (el) { el.textContent = ''; el.style.display = 'none'; }
+  },
+
+  // Toast notification (top-right)
+  toast(msg, type = 'info') {
+    const c = document.getElementById('toast-container');
+    if (!c) return;
+    const t = document.createElement('div');
+    t.className = 'toast toast-' + type;
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(() => t.classList.add('toast-show'), 10);
+    setTimeout(() => { t.classList.remove('toast-show'); setTimeout(() => t.remove(), 400); }, 4000);
+  },
+
+  // --------------------------------------------------
+  // LOADING
+  // --------------------------------------------------
+  loading(show) {
+    document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none';
+  },
+
+  // --------------------------------------------------
+  // LOGIN
+  // --------------------------------------------------
+  async handleLogin() {
+    this.clearError('error-login');
+    const phone    = document.getElementById('login-phone').value.trim();
+    const password = document.getElementById('login-password').value.trim();
+    if (!phone || !password) {
+      this.showError('error-login', 'Please enter your phone number and password.');
+      return;
+    }
+
+    this.loading(true);
+    const res = await this.api('/auth/login/', 'POST', { phone, password }, 'error-login');
+    this.loading(false);
+
+    if (res && res.access) {
+      localStorage.setItem('access_token',  res.access);
+      localStorage.setItem('refresh_token', res.refresh);
+      localStorage.setItem('user_id',       res.user_id);
+      localStorage.setItem('username',      res.username);
+      localStorage.setItem('role',          res.role);
+      this.enterApp();
+    }
+  },
+
+  // --------------------------------------------------
+  // PASSENGER SIGNUP
+  // Auto-generates username from phone so users never
+  // see a "username taken" error for a display field.
+  // --------------------------------------------------
+  async handlePassengerSignup() {
+    this.clearError('error-signup-pass');
+    const phone      = document.getElementById('signup-pass-phone').value.trim();
+    const first_name = document.getElementById('signup-pass-first').value.trim();
+    const last_name  = document.getElementById('signup-pass-last').value.trim();
+    const password   = document.getElementById('signup-pass-password').value.trim();
+    const password2  = document.getElementById('signup-pass-password2').value.trim();
+
+    if (!phone || !password || !password2) {
+      this.showError('error-signup-pass', 'Phone number and password are required.');
+      return;
+    }
+    if (password !== password2) {
+      this.showError('error-signup-pass', 'Passwords do not match.');
+      return;
+    }
+
+    // Auto-generate username from phone digits so it is unique but invisible to user
+    const username = 'u' + phone.replace(/\D/g, '');
+
+    this.loading(true);
+    const res = await this.api('/auth/register/passenger/', 'POST',
+      { username, phone, first_name, last_name, password, password2 },
+      'error-signup-pass'
+    );
+    this.loading(false);
+
+    if (res && res.access) {
+      localStorage.setItem('access_token',  res.access);
+      localStorage.setItem('refresh_token', res.refresh);
+      localStorage.setItem('user_id',       res.user_id);
+      localStorage.setItem('username',      res.username);
+      localStorage.setItem('role',          res.role);
+      this.enterApp();
+    }
+  },
+
+  // --------------------------------------------------
+  // DRIVER SIGNUP
+  // --------------------------------------------------
+  async handleDriverSignup() {
+    this.clearError('error-signup-driver');
+    const phone           = document.getElementById('signup-driver-phone').value.trim();
+    const first_name      = document.getElementById('signup-driver-first').value.trim();
+    const last_name       = document.getElementById('signup-driver-last').value.trim();
+    const password        = document.getElementById('signup-driver-password').value.trim();
+    const password2       = document.getElementById('signup-driver-password2').value.trim();
+    const transport_model = document.getElementById('signup-driver-model').value.trim();
+    const transport_year  = parseInt(document.getElementById('signup-driver-year').value);
+    const transport_type  = document.getElementById('signup-driver-type').value;
+    const from_province   = document.getElementById('signup-driver-from').value.trim();
+    const to_province     = document.getElementById('signup-driver-to').value.trim();
+
+    if (!phone || !password || !password2) {
+      this.showError('error-signup-driver', 'Phone number and password are required.');
+      return;
+    }
+    if (!transport_model || !transport_year || !transport_type || !from_province || !to_province) {
+      this.showError('error-signup-driver', 'Please fill in all vehicle information fields.');
+      return;
+    }
+    if (password !== password2) {
+      this.showError('error-signup-driver', 'Passwords do not match.');
+      return;
+    }
+    if (from_province === to_province) {
+      this.showError('error-signup-driver', 'From and To province cannot be the same.');
+      return;
+    }
+
+    // Auto-generate unique username from phone digits
+    const username = 'u' + phone.replace(/\D/g, '');
+
+    this.loading(true);
+    const res = await this.api('/auth/register/driver/', 'POST', {
+      username, phone, first_name, last_name, password, password2,
+      transport_model, transport_year, transport_type, from_province, to_province,
+    }, 'error-signup-driver');
+    this.loading(false);
+
+    if (res && res.access) {
+      localStorage.setItem('access_token',  res.access);
+      localStorage.setItem('refresh_token', res.refresh);
+      localStorage.setItem('user_id',       res.user_id);
+      localStorage.setItem('username',      res.username);
+      localStorage.setItem('role',          res.role);
+      this.enterApp();
+    }
+  },
+
+  // --------------------------------------------------
+  // LOGOUT
+  // --------------------------------------------------
+  handleLogout() {
+    ['access_token','refresh_token','user_id','username','role'].forEach(k => localStorage.removeItem(k));
+    this.currentUser = null;
+    this.currentRide = null;
+    if (this.locationPollTimer) clearTimeout(this.locationPollTimer);
+    this.showAuthView('login');
+  },
+
+  // --------------------------------------------------
+  // BOOK: SEARCH
+  // --------------------------------------------------
+  async searchRides() {
+    const from    = document.getElementById('book-from-province').value;
+    const to      = document.getElementById('book-to-province').value;
+    const carType = document.getElementById('book-car-type').value;
+
+    let qs = '/rides/search/?';
+    if (from)    qs += 'from_province=' + from + '&';
+    if (to)      qs += 'to_province='   + to   + '&';
+    if (carType) qs += 'car_type='      + carType + '&';
+
+    this.loading(true);
+    const res = await this.api(qs.replace(/&$/, ''));
+    this.loading(false);
+
+    if (!res) return;
+    const rides = res.results || res;
+
+    const container = document.getElementById('available-rides');
+    if (!rides.length) {
+      container.innerHTML = '<p style="color:var(--text-dim);">No rides found for these filters.</p>';
+      this.goToBookStep(2);
+      return;
+    }
+
+    container.innerHTML = rides.map((t, i) => `
+      <div class="ride-option" onclick="app.selectTransport(this, ${i})" data-index="${i}">
+        <div class="ride-icon">${t.type === 'LUXURY' ? '🏎️' : t.type === 'COMFORT' ? '🚙' : '🚗'}</div>
+        <div class="ride-info">
+          <h4>${t.driver}</h4>
+          <p>${t.model} · ${t.type}</p>
+          <p style="font-size:11px;color:var(--text-dim);">${t.from_province} → ${t.to_province}</p>
+        </div>
+        <div>
+          <div class="ride-price">★ ${t.driver_rating ?? '—'}</div>
+        </div>
+      </div>
+    `).join('');
+
+    this._searchResults = rides;
+    this.goToBookStep(2);
+  },
+
+  selectTransport(el, index) {
+    document.querySelectorAll('#available-rides .ride-option').forEach(r => r.classList.remove('selected'));
+    el.classList.add('selected');
+    this.selectedTransport = this._searchResults[index];
+
+    const t = this.selectedTransport;
+    document.getElementById('book-confirm-details').innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <span style="width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0;"></span>
+        <span style="font-size:14px;">From: Province ${t.from_province}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+        <span style="width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;"></span>
+        <span style="font-size:14px;">To: Province ${t.to_province}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);font-size:14px;">
+        <span style="color:var(--text-dim);">Driver</span><strong>${t.driver}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);font-size:14px;">
+        <span style="color:var(--text-dim);">Vehicle</span><strong>${t.model} (${t.type})</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 0;font-size:14px;">
+        <span style="color:var(--text-dim);">Rating</span><strong>★ ${t.driver_rating ?? '—'}</strong>
+      </div>
+    `;
+
+    this.goToBookStep(3);
+  },
+
+  goToBookStep(n) {
+    [1, 2, 3].forEach(i => {
+      document.getElementById('book-step-' + i).style.display = i === n ? 'block' : 'none';
+      const dot = document.getElementById('step' + i + '-dot');
+      if (dot) dot.classList.toggle('active', i <= n);
+    });
+  },
+
+  async confirmAndBook() {
+    if (!this.selectedTransport) { this.toast('Please select a ride first.', 'error'); return; }
+
+    const seat    = document.getElementById('book-seat').value;
+    const payment = document.getElementById('book-payment').value;
+    const t       = this.selectedTransport;
+
+    const depTime = new Date();
+    depTime.setHours(depTime.getHours() + 1);
+
+    this.loading(true);
+    const res = await this.api('/rides/', 'POST', {
+      driver:          t.driver_id || t.id,
+      route:           t.route || null,
+      from_province:   t.from_province_id || null,
+      to_province:     t.to_province_id   || null,
+      seat,
+      departure_time:  depTime.toISOString(),
+      price:           '0.00',
+      payment_method:  payment,
+      payment_status:  'unpaid',
+    });
+    this.loading(false);
+
+    if (res && res.id) {
+      this.toast('Ride booked! Go to Track to follow your ride.', 'success');
+      this.currentRide = res;
+      this.showView('track');
+    }
+  },
+
+  // --------------------------------------------------
+  // TRACK: ACTIVE RIDE
+  // --------------------------------------------------
+  async loadActiveRide() {
+    this.loading(true);
+    const res = await this.api('/rides/?status=in_progress');
+    if (!res) { this.loading(false); return; }
+
+    const rides = res.results || res;
+
+    if (!rides.length) {
+      // Also check pending / confirmed
+      const res2 = await this.api('/rides/?status=pending');
+      const res3 = await this.api('/rides/?status=confirmed');
+      const all = [...(res2?.results || []), ...(res3?.results || [])];
+      this.loading(false);
+      if (all.length) {
+        this.currentRide = all[0];
+        this.renderActiveRide();
+      } else {
+        this.renderNoRide();
+      }
+    } else {
+      this.loading(false);
+      this.currentRide = rides[0];
+      this.renderActiveRide();
+    }
+  },
+
+  renderNoRide() {
+    document.getElementById('no-active-ride').style.display = 'block';
+    document.getElementById('active-ride-info').style.display = 'none';
+    document.getElementById('driver-status-card').style.display = 'none';
+    document.getElementById('chat-section').style.display = 'none';
+    document.getElementById('ride-actions').style.display = 'none';
+  },
+
+  renderActiveRide() {
+    const r = this.currentRide;
+    document.getElementById('no-active-ride').style.display = 'none';
+    document.getElementById('active-ride-info').style.display = 'block';
+    document.getElementById('chat-section').style.display = 'block';
+    document.getElementById('ride-actions').style.display = 'flex';
+
+    // Driver card
+    const driverCard = document.getElementById('driver-status-card');
+    driverCard.style.display = 'flex';
+    document.getElementById('driver-avatar-initials').textContent = r.driver ? r.driver.slice(0, 2).toUpperCase() : '--';
+    document.getElementById('driver-name').textContent = r.driver || 'Driver';
+    document.getElementById('driver-vehicle').textContent = 'Seat: ' + r.seat;
+    document.getElementById('driver-rating').textContent = '★ —';
+
+    // Route
+    document.getElementById('ride-status-display').textContent = r.status.replace('_', ' ').toUpperCase();
+    document.getElementById('ride-from').textContent = 'Province ' + r.from_province;
+    document.getElementById('ride-to').textContent   = 'Province ' + r.to_province;
+    document.getElementById('ride-departure').textContent = new Date(r.departure_time).toLocaleString();
+
+    // Map
+    this.initTrackingMap();
+    this.pollLocation();
+
+    // Chat
+    this.loadChatMessages();
+  },
+
+  // --------------------------------------------------
+  // TRACKING MAP
+  // --------------------------------------------------
+  initTrackingMap() {
+    if (this.trackingMap) { this.trackingMap.remove(); this.trackingMap = null; }
+    const el = document.getElementById('tracking-map');
+    if (!el) return;
+    this.trackingMap = L.map('tracking-map').setView([41.0, 69.0], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors', maxZoom: 19,
+    }).addTo(this.trackingMap);
+  },
+
+  pollLocation() {
+    if (!this.currentRide) return;
+    this.loadLatestLocation();
+    this.locationPollTimer = setTimeout(() => this.pollLocation(), 5000);
+  },
+
+  async loadLatestLocation() {
+    if (!this.currentRide || !this.trackingMap) return;
+    const loc = await this.api('/rides/' + this.currentRide.id + '/locations/latest/');
+    if (loc && loc.latitude != null) {
+      const lat = parseFloat(loc.latitude);
+      const lng = parseFloat(loc.longitude);
+      this.trackingMap.setView([lat, lng], 15);
+      if (this.driverMarker) this.trackingMap.removeLayer(this.driverMarker);
+      this.driverMarker = L.marker([lat, lng])
+        .addTo(this.trackingMap)
+        .bindPopup('<strong>' + (loc.driver || 'Driver') + '</strong><br>Live location');
+    }
+  },
+
+  // --------------------------------------------------
+  // CHAT
+  // --------------------------------------------------
+  async loadChatMessages() {
+    if (!this.currentRide) return;
+    const res = await this.api('/rides/' + this.currentRide.id + '/messages/');
+    if (!res) return;
+
+    const msgs = res.results || res;
+    const container = document.getElementById('chat-messages');
+    const myId = parseInt(localStorage.getItem('user_id'));
+
+    container.innerHTML = msgs.map(m => `
+      <div class="chat-message ${m.sender_id === myId ? 'own' : 'other'}">
+        <div class="msg-content">
+          <div class="msg-sender">${m.sender}</div>
+          <div class="msg-text">${m.message}</div>
+          <div class="msg-time">${new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
+        </div>
+      </div>
+    `).join('');
+
+    container.scrollTop = container.scrollHeight;
+  },
+
+  async sendChatMessage() {
+    if (!this.currentRide) { this.toast('No active ride.', 'error'); return; }
+    const input = document.getElementById('chat-input');
+    const message = input.value.trim();
+    if (!message) return;
+
+    const res = await this.api('/rides/' + this.currentRide.id + '/messages/', 'POST', { message });
+    if (res) { input.value = ''; this.loadChatMessages(); }
+  },
+
+  // --------------------------------------------------
+  // CANCEL RIDE
+  // --------------------------------------------------
+  async cancelRide() {
+    if (!this.currentRide) return;
+    if (!confirm('Cancel this ride?')) return;
+    this.loading(true);
+    const res = await this.api('/rides/' + this.currentRide.id + '/cancel/', 'POST');
+    this.loading(false);
+    if (res !== null) {
+      this.currentRide = null;
+      if (this.locationPollTimer) clearTimeout(this.locationPollTimer);
+      this.renderNoRide();
+    }
+  },
+
+  // --------------------------------------------------
+  // HISTORY
+  // --------------------------------------------------
+  async loadRideHistory() {
+    this.loading(true);
+    const res = await this.api('/rides/');
+    this.loading(false);
+    if (!res) return;
+
+    const rides = res.results || res;
+    const container = document.getElementById('history-list');
+
+    if (!rides.length) {
+      container.innerHTML = '<p style="color:var(--text-dim);">No rides yet. Book your first ride!</p>';
+      return;
+    }
+
+    const statusColor = s => ({ completed:'var(--green)', cancelled:'var(--red)' }[s] || 'var(--text-dim)');
+
+    container.innerHTML = rides.map(r => `
+      <div class="history-card">
+        <div class="history-date">
+          <div class="day">${new Date(r.departure_time).getDate()}</div>
+          <div class="month">${new Date(r.departure_time).toLocaleString('default',{month:'short'})}</div>
+        </div>
+        <div class="history-route">
+          <div class="from"><span class="dot-s"></span> From Province ${r.from_province}</div>
+          <div class="to"><span class="dot-e"></span> To Province ${r.to_province}</div>
+        </div>
+        <div class="history-meta">
+          <div class="ride-type">Seat: ${r.seat}</div>
+          <div class="ride-time" style="color:${statusColor(r.status)}">${r.status.replace('_',' ')}</div>
+        </div>
+        <div class="history-price">$${r.price}</div>
+      </div>
+    `).join('');
+  },
+
+  // --------------------------------------------------
+  // PROFILE
+  // --------------------------------------------------
+  async loadProfile() {
+    const username = localStorage.getItem('username') || '—';
+    const role     = localStorage.getItem('role') || '—';
+    const initials = username.slice(0, 2).toUpperCase();
+
+    document.getElementById('profile-avatar-initials').textContent = initials;
+    document.getElementById('profile-username').textContent = username;
+    document.getElementById('profile-role').textContent = 'Role: ' + role;
+
+    // Load stats
+    this.loading(true);
+    let statsRes = null;
+    if (role === 'DRIVER') {
+      statsRes = await this.api('/drivers/stats/');
+      if (statsRes) {
+        document.getElementById('stat-total-rides').textContent  = statsRes.total_rides ?? 0;
+        document.getElementById('stat-completed').textContent    = statsRes.completed ?? 0;
+        document.getElementById('stat-extra').textContent        = '$' + (statsRes.total_earnings ?? 0);
+        document.getElementById('stat-extra-label').textContent  = 'Earnings';
+      }
+    } else {
+      statsRes = await this.api('/passengers/stats/');
+      if (statsRes) {
+        document.getElementById('stat-total-rides').textContent  = statsRes.total_rides ?? 0;
+        document.getElementById('stat-completed').textContent    = statsRes.completed ?? 0;
+        document.getElementById('stat-extra').textContent        = '$' + (statsRes.total_spent ?? 0);
+        document.getElementById('stat-extra-label').textContent  = 'Total Spent';
+      }
+    }
+    this.loading(false);
+  },
+};
+
+document.addEventListener('DOMContentLoaded', () => app.init());

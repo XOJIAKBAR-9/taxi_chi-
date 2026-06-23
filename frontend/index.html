@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Taxi Chi — Ride Booking</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Loading overlay -->
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="spinner"></div>
+    <p>Loading...</p>
+  </div>
+
+  <!-- ===================== AUTH VIEWS ===================== -->
+
+  <!-- LOGIN -->
+  <div id="view-login" class="view active">
+    <div class="auth-container">
+      <div class="auth-box">
+        <div class="auth-header">
+          <h1 class="auth-logo">TaxiChi<span>rides</span></h1>
+          <p>Premium ride-hailing for modern cities</p>
+        </div>
+        <div class="form-error" id="error-login"></div>
+        <form class="auth-form" onsubmit="return false;">
+          <div class="form-group">
+            <label>Phone Number</label>
+            <input type="tel" id="login-phone" placeholder="+1 (555) 123-4567" oninput="app.clearError('error-login')">
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="login-password" placeholder="••••••••" oninput="app.clearError('error-login')">
+          </div>
+          <button type="button" class="btn-primary" style="width:100%;margin-top:20px;" onclick="app.handleLogin()">Sign In</button>
+        </form>
+        <div class="auth-divider"><span>New to TaxiChi?</span></div>
+        <button class="btn-ghost" style="width:100%;" onclick="app.showAuthView('signup-role')">Create Account</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GLOBAL TOAST -->
+  <div id="toast-container" style="position:fixed;top:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:10px;pointer-events:none;"></div>
+
+  <!-- SIGNUP: ROLE SELECTION -->
+  <div id="view-signup-role" class="view">
+    <div class="auth-container">
+      <div class="auth-box">
+        <div class="auth-header">
+          <h1 class="auth-logo">TaxiChi<span>rides</span></h1>
+          <p>Join as a Passenger or Driver</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:24px;">
+          <button class="btn-primary" style="width:100%;" onclick="app.showAuthView('signup-passenger')">
+            🧍 Sign Up as Passenger
+          </button>
+          <button class="btn-primary" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);" onclick="app.showAuthView('signup-driver')">
+            🚗 Sign Up as Driver
+          </button>
+        </div>
+        <div class="auth-divider"><span>Already have an account?</span></div>
+        <button class="btn-ghost" style="width:100%;" onclick="app.showAuthView('login')">Sign In</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIGNUP: PASSENGER -->
+  <div id="view-signup-passenger" class="view">
+    <div class="auth-container">
+      <div class="auth-box" style="max-height:88vh;overflow-y:auto;">
+        <div class="auth-header">
+          <h1 class="auth-logo">TaxiChi<span>rides</span></h1>
+          <p>Create your Passenger account</p>
+        </div>
+        <div class="form-error" id="error-signup-pass"></div>
+        <form class="auth-form" onsubmit="return false;">
+          <div class="form-group">
+            <label>Phone Number</label>
+            <input type="tel" id="signup-pass-phone" placeholder="+1 (555) 123-4567" oninput="app.clearError('error-signup-pass')">
+          </div>
+          <div class="form-group">
+            <label>First Name</label>
+            <input type="text" id="signup-pass-first" placeholder="John">
+          </div>
+          <div class="form-group">
+            <label>Last Name</label>
+            <input type="text" id="signup-pass-last" placeholder="Doe">
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="signup-pass-password" placeholder="••••••••">
+          </div>
+          <div class="form-group">
+            <label>Confirm Password</label>
+            <input type="password" id="signup-pass-password2" placeholder="••••••••" oninput="app.clearError('error-signup-pass')">
+          </div>
+          <button type="button" class="btn-primary" style="width:100%;margin-top:20px;" onclick="app.handlePassengerSignup()">Create Account</button>
+        </form>
+        <button class="btn-ghost" style="width:100%;margin-top:12px;" onclick="app.showAuthView('signup-role')">← Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIGNUP: DRIVER -->
+  <div id="view-signup-driver" class="view">
+    <div class="auth-container">
+      <div class="auth-box" style="max-height:88vh;overflow-y:auto;">
+        <div class="auth-header">
+          <h1 class="auth-logo">TaxiChi<span>rides</span></h1>
+          <p>Create your Driver account</p>
+        </div>
+        <div class="form-error" id="error-signup-driver"></div>
+        <form class="auth-form" onsubmit="return false;">
+          <div class="form-group">
+            <label>Phone Number</label>
+            <input type="tel" id="signup-driver-phone" placeholder="+1 (555) 123-4567" oninput="app.clearError('error-signup-driver')">
+          </div>
+          <div class="form-group">
+            <label>First Name</label>
+            <input type="text" id="signup-driver-first" placeholder="Jane">
+          </div>
+          <div class="form-group">
+            <label>Last Name</label>
+            <input type="text" id="signup-driver-last" placeholder="Smith">
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="signup-driver-password" placeholder="••••••••">
+          </div>
+          <div class="form-group">
+            <label>Confirm Password</label>
+            <input type="password" id="signup-driver-password2" placeholder="••••••••">
+          </div>
+          <div style="border-top:1px solid var(--border);margin:8px 0 4px;padding-top:16px;">
+            <p style="font-size:13px;color:var(--accent);font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:16px;">Vehicle Information</p>
+          </div>
+          <div class="form-group">
+            <label>Vehicle Model</label>
+            <input type="text" id="signup-driver-model" placeholder="e.g. Toyota Camry">
+          </div>
+          <div class="form-group">
+            <label>Vehicle Year</label>
+            <input type="number" id="signup-driver-year" placeholder="2023" min="2000" max="2030">
+          </div>
+          <div class="form-group">
+            <label>Vehicle Type</label>
+            <select id="signup-driver-type">
+              <option value="">Select type…</option>
+              <option value="ORDINARY">Ordinary</option>
+              <option value="COMFORT">Comfort</option>
+              <option value="LUXURY">Luxury</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>From Province</label>
+            <input type="text" id="signup-driver-from" placeholder="e.g. New York">
+          </div>
+          <div class="form-group">
+            <label>To Province</label>
+            <input type="text" id="signup-driver-to" placeholder="e.g. Boston">
+          </div>
+          <button type="button" class="btn-primary" style="width:100%;margin-top:20px;" onclick="app.handleDriverSignup()">Create Driver Account</button>
+        </form>
+        <button class="btn-ghost" style="width:100%;margin-top:12px;" onclick="app.showAuthView('signup-role')">← Back</button>
+        <!-- toast container shared -->
+        <div id="toast-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== NAVBAR ===================== -->
+  <nav id="navbar" style="display:none;">
+    <div class="container">
+      <a href="#" class="nav-logo" onclick="app.showView('home');return false;">TaxiChi<span>rides</span></a>
+      <div class="nav-links">
+        <a href="#" data-view="home"    onclick="app.showView('home');return false;">Home</a>
+        <a href="#" data-view="book"    onclick="app.showView('book');return false;">Book</a>
+        <a href="#" data-view="track"   onclick="app.showView('track');return false;">Track</a>
+        <a href="#" data-view="history" onclick="app.showView('history');return false;">History</a>
+        <a href="#" data-view="profile" onclick="app.showView('profile');return false;">Profile</a>
+        <a href="#" class="nav-cta"     onclick="app.handleLogout();return false;">Sign Out</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ===================== APP VIEWS ===================== -->
+  <div id="app-views" style="display:none;">
+
+  <!-- ===== HOME ===== -->
+  <main id="view-home" class="view">
+    <section class="hero">
+      <div class="hero-bg">
+        <div class="hero-grid"></div>
+        <div class="hero-glow"></div>
+        <div class="hero-glow-2"></div>
+      </div>
+      <div class="container hero-content">
+        <div class="hero-text">
+          <div class="hero-badge"><span class="dot"></span> Available now in your area</div>
+          <h1 class="hero-title">Move through<br>the city<br><span class="accent">effortlessly.</span></h1>
+          <p class="hero-sub">Premium rides at the tap of a button. Transparent pricing, professional drivers, and real-time tracking — all in one seamless experience.</p>
+          <div class="hero-actions">
+            <button class="btn-primary" onclick="app.showView('book')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              Book a Ride
+            </button>
+            <button class="btn-ghost" onclick="app.showView('track')">Track Ride</button>
+          </div>
+        </div>
+        <div class="hero-visual">
+          <div class="hero-map-card">
+            <div class="map-placeholder">
+              <div class="map-roads">
+                <div class="map-road h1"></div><div class="map-road h2"></div><div class="map-road h3"></div>
+                <div class="map-road v1"></div><div class="map-road v2"></div><div class="map-road v3"></div>
+                <div class="map-road d1"></div>
+              </div>
+              <div class="map-pin start"></div>
+              <div class="map-pin end"></div>
+              <div class="map-route"></div>
+              <div class="map-car">🚕</div>
+              <div class="map-label">Live route — <strong>4.2 km</strong></div>
+              <div class="map-eta">3 min</div>
+            </div>
+            <div class="hero-card-info">
+              <div class="card-route">
+                <div class="card-route-item"><span class="dot-green"></span> Pickup point <span>· start</span></div>
+                <div class="card-route-item"><span class="dot-amber"></span> Destination <span>· drop</span></div>
+              </div>
+              <div class="card-price">
+                <div class="label">Est. fare</div>
+                <div class="amount">$18</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STATS -->
+    <section class="stats-bar">
+      <div class="container">
+        <div class="stats-grid">
+          <div><div class="stat-num">2M+</div><div class="stat-label">Rides Completed</div></div>
+          <div><div class="stat-num">50K</div><div class="stat-label">Active Drivers</div></div>
+          <div><div class="stat-num">4.9</div><div class="stat-label">Avg. Rating</div></div>
+          <div><div class="stat-num">&lt;3m</div><div class="stat-label">Avg. Pickup</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FEATURES -->
+    <section class="features">
+      <div class="container">
+        <div class="section-label">Why TaxiChi</div>
+        <h2 class="section-title">Built for how you actually move.</h2>
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feature-icon">⚡</div>
+            <h3>Instant Matching</h3>
+            <p>Our algorithm finds the nearest available driver in seconds. Average pickup time under 3 minutes in metro areas.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🔒</div>
+            <h3>Safe &amp; Verified</h3>
+            <p>Every driver is background-checked and vehicle-inspected. Share your trip in real-time with contacts for peace of mind.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">💎</div>
+            <h3>Transparent Pricing</h3>
+            <p>See your fare before you book. No surge surprises, no hidden fees. What you see is what you pay — guaranteed.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">📍</div>
+            <h3>Live Tracking</h3>
+            <p>Watch your ride approach in real-time on the map. Get accurate ETAs and driver details before pickup.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">💬</div>
+            <h3>Direct Communication</h3>
+            <p>Message your driver in real-time. Ask about the best pickup point or share special instructions instantly.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">💳</div>
+            <h3>Flexible Payment</h3>
+            <p>Pay with card or cash. Automatic receipts and expense tracking built in.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===== BOOK ===== -->
+  <div id="view-book" class="view">
+    <div class="booking-view">
+      <div class="booking-layout">
+        <div class="booking-panel">
+          <div class="booking-step-indicator">
+            <div class="step-dot active" id="step1-dot"></div>
+            <div class="step-dot" id="step2-dot"></div>
+            <div class="step-dot" id="step3-dot"></div>
+          </div>
+
+          <!-- Step 1: Filters -->
+          <div id="book-step-1">
+            <h2 class="booking-step-title">Where to?</h2>
+            <p class="booking-step-sub">Choose provinces and ride type to search</p>
+            <div class="input-group">
+              <label>From Province ID</label>
+              <input type="number" id="book-from-province" placeholder="Province ID (e.g. 1)">
+            </div>
+            <div class="input-group">
+              <label>To Province ID</label>
+              <input type="number" id="book-to-province" placeholder="Province ID (e.g. 2)">
+            </div>
+            <div class="input-group">
+              <label>Vehicle Type</label>
+              <select id="book-car-type">
+                <option value="">Any type</option>
+                <option value="ORDINARY">Ordinary</option>
+                <option value="COMFORT">Comfort</option>
+                <option value="LUXURY">Luxury</option>
+              </select>
+            </div>
+            <button class="btn-next" onclick="app.searchRides()">Search Rides</button>
+          </div>
+
+          <!-- Step 2: Choose ride -->
+          <div id="book-step-2" style="display:none;">
+            <h2 class="booking-step-title">Available Rides</h2>
+            <p class="booking-step-sub">Select a driver that fits your route</p>
+            <div id="available-rides" class="ride-options"></div>
+            <div style="display:flex;gap:12px;margin-top:20px;">
+              <button class="btn-next" style="background:var(--surface);color:var(--text);" onclick="app.goToBookStep(1)">Back</button>
+            </div>
+          </div>
+
+          <!-- Step 3: Confirm booking -->
+          <div id="book-step-3" style="display:none;">
+            <h2 class="booking-step-title">Confirm &amp; Book</h2>
+            <p class="booking-step-sub">Review your trip details</p>
+            <div id="book-confirm-details" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-bottom:20px;"></div>
+            <div class="input-group">
+              <label>Seat</label>
+              <select id="book-seat">
+                <option value="FRONT">Front</option>
+                <option value="BACK">Back</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label>Payment Method</label>
+              <select id="book-payment">
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:20px;">
+              <button class="btn-next" style="background:var(--surface);color:var(--text);" onclick="app.goToBookStep(2)">Back</button>
+              <button class="btn-next" style="background:var(--green);color:var(--bg);" onclick="app.confirmAndBook()">Confirm &amp; Book</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="booking-map-area">
+          <div class="booking-map-full">
+            <div class="map-roads">
+              <div class="map-road h1"></div><div class="map-road h2"></div><div class="map-road h3"></div>
+              <div class="map-road v1"></div><div class="map-road v2"></div><div class="map-road v3"></div>
+              <div class="map-road d1"></div>
+            </div>
+            <div class="map-pin start" style="top:35%;left:25%;"></div>
+            <div class="map-pin end" style="top:55%;left:70%;"></div>
+            <div class="map-car">🚕</div>
+          </div>
+          <div class="map-eta" style="position:absolute;top:24px;right:24px;font-size:15px;padding:12px 20px;">Search to Book</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TRACK ===== -->
+  <div id="view-track" class="view">
+    <div class="tracking-view">
+      <div class="tracking-layout">
+        <div class="tracking-sidebar">
+
+          <!-- Driver info (populated from backend) -->
+          <div id="driver-status-card" class="driver-status" style="display:none;">
+            <div class="driver-avatar" id="driver-avatar-initials">--</div>
+            <div class="driver-info">
+              <h4 id="driver-name">Driver</h4>
+              <p id="driver-vehicle">Vehicle info</p>
+            </div>
+            <div class="driver-rating" id="driver-rating">★ -</div>
+          </div>
+
+          <!-- No active ride placeholder -->
+          <div id="no-active-ride" style="padding:24px 0;">
+            <p style="color:var(--text-dim);margin-bottom:16px;">No active ride at the moment.</p>
+            <button class="btn-primary" onclick="app.showView('book')">Book a Ride</button>
+          </div>
+
+          <!-- Active ride info (hidden until ride found) -->
+          <div id="active-ride-info" style="display:none;">
+            <div class="tracking-eta-card">
+              <div class="eta-label">Status</div>
+              <div class="eta-time" id="ride-status-display" style="font-size:22px;">—</div>
+            </div>
+            <div class="tracking-stops">
+              <div class="stop-item">
+                <div class="stop-dot active"></div>
+                <div class="stop-detail">
+                  <h5 id="ride-from">From</h5>
+                  <p>Pickup</p>
+                </div>
+              </div>
+              <div class="stop-item">
+                <div class="stop-dot upcoming"></div>
+                <div class="stop-detail">
+                  <h5 id="ride-to">To</h5>
+                  <p id="ride-departure">Drop-off</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CHAT -->
+          <div class="tracking-chat" id="chat-section" style="display:none;">
+            <div class="chat-header">
+              <h5>Driver Chat</h5>
+              <span id="chat-status" class="status-indicator disconnected"></span>
+            </div>
+            <div class="chat-messages" id="chat-messages"></div>
+            <div class="chat-input-group">
+              <input type="text" id="chat-input" placeholder="Message your driver…">
+              <button onclick="app.sendChatMessage()" class="btn-send">Send</button>
+            </div>
+          </div>
+
+          <!-- Actions (when ride is active) -->
+          <div id="ride-actions" class="tracking-actions" style="display:none;">
+            <button class="track-btn danger" onclick="app.cancelRide()">✕ Cancel Ride</button>
+          </div>
+        </div>
+
+        <!-- Real Leaflet map -->
+        <div class="tracking-map-area">
+          <div id="tracking-map" style="width:100%;height:100%;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== HISTORY ===== -->
+  <div id="view-history" class="view">
+    <div class="history-view">
+      <div class="container">
+        <div class="history-header">
+          <div>
+            <div class="section-label">Your Rides</div>
+            <h2 class="section-title" style="margin-bottom:0;">Ride History</h2>
+          </div>
+        </div>
+        <div class="history-list" id="history-list">
+          <p style="color:var(--text-dim);">Loading your rides…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PROFILE ===== -->
+  <div id="view-profile" class="view">
+    <div class="profile-view">
+      <div class="container">
+        <div class="profile-header">
+          <div class="section-label">Account</div>
+          <h2 class="section-title">Your Profile</h2>
+        </div>
+        <div class="profile-grid">
+          <div class="profile-card">
+            <div class="profile-avatar" id="profile-avatar-initials">--</div>
+            <div class="profile-info">
+              <h3 id="profile-username">Loading…</h3>
+              <p id="profile-phone" style="color:var(--text-dim);font-size:14px;"></p>
+              <p id="profile-role" style="font-size:12px;color:var(--text-dim);margin-top:4px;"></p>
+            </div>
+          </div>
+
+          <div class="profile-stats" id="profile-stats">
+            <div class="stat-item"><div class="stat-value" id="stat-total-rides">0</div><div class="stat-label">Total Rides</div></div>
+            <div class="stat-item"><div class="stat-value" id="stat-completed">0</div><div class="stat-label">Completed</div></div>
+            <div class="stat-item"><div class="stat-value" id="stat-extra">—</div><div class="stat-label" id="stat-extra-label">Rating</div></div>
+          </div>
+
+          <div class="profile-section">
+            <h4>Settings</h4>
+            <div class="setting-item">
+              <span>Notifications</span>
+              <label class="toggle">
+                <input type="checkbox" checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="profile-section">
+            <button class="btn-ghost" style="width:100%;color:var(--red);" onclick="app.handleLogout()">Sign Out</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer id="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="#" class="nav-logo" onclick="app.showView('home');return false;">TaxiChi<span>rides</span></a>
+          <p>Premium ride-hailing built for the modern city. Fast, safe, and transparent — every single trip.</p>
+        </div>
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="#" onclick="app.showView('book');return false;">Book a Ride</a>
+          <a href="#" onclick="app.showView('track');return false;">Track Ride</a>
+          <a href="#" onclick="app.showView('history');return false;">History</a>
+        </div>
+        <div class="footer-col">
+          <h4>Account</h4>
+          <a href="#" onclick="app.showView('profile');return false;">Profile</a>
+          <a href="#" onclick="app.handleLogout();return false;">Sign Out</a>
+        </div>
+        <div class="footer-col">
+          <h4>Support</h4>
+          <a href="#">Help Center</a>
+          <a href="#">Safety</a>
+          <a href="#">Terms</a>
+          <a href="#">Privacy</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>&copy; 2026 TaxiChi Rides. All rights reserved.</span>
+        <span>Made for the road ahead.</span>
+      </div>
+    </div>
+  </footer>
+
+  </div><!-- end app-views -->
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
