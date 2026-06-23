@@ -1,7 +1,7 @@
 from django.db.models import Q, Sum, F, Avg
 from django.utils import timezone
 
-from rest_framework import status, viewsets, mixins
+from rest_framework import status, viewsets, mixins, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
@@ -9,7 +9,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 
-from .models import User, Province, Route, Transport, DriverProfile, PassengerProfile, Ride, Rating, DriverDocument
+from .models import User, Province, Route, Transport, DriverProfile, PassengerProfile, Ride, Rating, DriverDocument, ChatMessage, Location
 from .serializers import (
     ProvinceSerializer,
     RouteSerializer,
@@ -19,6 +19,8 @@ from .serializers import (
     RideSerializer,
     RatingSerializer,
     DriverDocumentSerializer,
+    ChatMessageSerializer,
+    LocationSerializer,
 )
 from .auth_serializers import (
     RegisterPassengerSerializer,
@@ -27,7 +29,7 @@ from .auth_serializers import (
     ChangePasswordSerializer,
     RideSearchSerializer,
 )
-from .permissions import IsDriver, IsPassenger, IsRideParticipant
+from .permissions import IsDriver, IsPassenger, IsRideParticipant, IsRideParticipantByURL
 
 
 class AuthViewSet(viewsets.GenericViewSet):
@@ -538,3 +540,135 @@ class DriverDocumentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
             profile.save(update_fields=['is_verified'])
 
         return Response(DriverDocumentSerializer(document).data)
+
+
+class ChatMessageViewSet(viewsets.GenericViewSet,
+                         mixins.ListModelMixin,
+                         mixins.CreateModelMixin):
+    serializer_class = ChatMessageSerializer
+
+    def get_permissions(self):
+        return [IsAuthenticated(), IsRideParticipantByURL()]
+
+    def get_queryset(self):
+        ride_pk = self.kwargs.get('ride_pk')
+        return ChatMessage.objects.filter(ride_id=ride_pk).order_by('timestamp')
+
+    @extend_schema(
+        responses=ChatMessageSerializer(many=True),
+        description='List all messages in the ride chat'
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        request=ChatMessageSerializer,
+        responses=ChatMessageSerializer,
+        description='Send a new message in the ride chat'
+    )
+    def create(self, request, *args, **kwargs):
+        try:
+            ride = Ride.objects.get(pk=self.kwargs.get('ride_pk'))
+        except Ride.DoesNotExist:
+            return Response({'detail': 'Ride not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user != ride.driver and request.user != ride.passenger:
+            return Response(
+                {'detail': 'You are not a participant in this ride.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        s = ChatMessageSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        s.save(ride=ride, sender=request.user)
+        return Response(s.data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        responses=ChatMessageSerializer,
+        description='Mark a message as read'
+    )
+    @action(detail=True, methods=['patch'])
+    def mark_as_read(self, request, ride_pk=None, pk=None):
+        try:
+            message = ChatMessage.objects.get(pk=pk, ride_id=ride_pk)
+        except ChatMessage.DoesNotExist:
+            return Response({'detail': 'Message not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        message.is_read = True
+        message.save(update_fields=['is_read'])
+        return Response(ChatMessageSerializer(message).data)
+
+    @extend_schema(
+        responses={'unread_count': serializers.IntegerField()},
+        description='Get count of unread messages in this ride'
+    )
+    @action(detail=False, methods=['get'])
+    def unread_count(self, request, ride_pk=None):
+        ride_pk = self.kwargs.get('ride_pk')
+        unread = ChatMessage.objects.filter(
+            ride_id=ride_pk,
+            is_read=False
+        ).exclude(sender=request.user).count()
+        return Response({'unread_count': unread})
+
+
+class LocationViewSet(viewsets.GenericViewSet,
+                      mixins.ListModelMixin,
+                      mixins.CreateModelMixin):
+    serializer_class = LocationSerializer
+
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsAuthenticated(), IsDriver()]
+        return [IsAuthenticated(), IsRideParticipantByURL()]
+
+    def get_queryset(self):
+        ride_pk = self.kwargs.get('ride_pk')
+        return Location.objects.filter(ride_id=ride_pk).order_by('-timestamp')
+
+    @extend_schema(
+        responses=LocationSerializer(many=True),
+        description='List all location updates for this ride'
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        request=LocationSerializer,
+        responses=LocationSerializer,
+        description='Update driver location during the ride'
+    )
+    def create(self, request, *args, **kwargs):
+        try:
+            ride = Ride.objects.get(pk=self.kwargs.get('ride_pk'))
+        except Ride.DoesNotExist:
+            return Response({'detail': 'Ride not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user != ride.driver:
+            return Response(
+                {'detail': 'Only the driver can update location.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if ride.status not in [Ride.Status.CONFIRMED, Ride.Status.IN_PROGRESS]:
+            return Response(
+                {'detail': 'Cannot update location for rides that are not in progress.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        s = LocationSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        s.save(ride=ride, driver=request.user)
+        return Response(s.data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        responses=LocationSerializer,
+        description='Get the latest location update for this ride'
+    )
+    @action(detail=False, methods=['get'])
+    def latest(self, request, ride_pk=None):
+        try:
+            location = Location.objects.filter(ride_id=ride_pk).latest('timestamp')
+            return Response(LocationSerializer(location).data)
+        except Location.DoesNotExist:
+            return Response({'detail': 'No location updates available.'}, status=status.HTTP_404_NOT_FOUND)

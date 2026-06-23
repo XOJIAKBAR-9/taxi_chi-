@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Province, Route, Transport, DriverProfile, PassengerProfile, Ride, Rating, DriverDocument
+from .models import Province, Route, Transport, DriverProfile, PassengerProfile, Ride, Rating, DriverDocument, ChatMessage, Location
 
 class ProvinceSerializer(serializers.ModelSerializer):
     class Meta:
@@ -73,3 +73,23 @@ class DriverDocumentSerializer(serializers.ModelSerializer):
         model = DriverDocument
         fields = ['id', 'driver', 'doc_type', 'file', 'status', 'admin_note', 'uploaded_at']
         read_only_fields = ['status', 'admin_note', 'uploaded_at']
+
+
+class ChatMessageSerializer(serializers.ModelSerializer):
+    sender = serializers.CharField(source='sender.username', read_only=True)
+    sender_id = serializers.IntegerField(source='sender.id', read_only=True)
+
+    class Meta:
+        model = ChatMessage
+        fields = ['id', 'ride', 'sender', 'sender_id', 'message', 'timestamp', 'is_read']
+        read_only_fields = ['timestamp', 'sender']
+
+
+class LocationSerializer(serializers.ModelSerializer):
+    driver = serializers.CharField(source='driver.username', read_only=True)
+    driver_id = serializers.IntegerField(source='driver.id', read_only=True)
+
+    class Meta:
+        model = Location
+        fields = ['id', 'ride', 'driver', 'driver_id', 'latitude', 'longitude', 'timestamp']
+        read_only_fields = ['timestamp', 'driver']
