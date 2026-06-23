@@ -141,3 +141,31 @@ class Rating(models.Model):
 
     def __str__(self):
         return f"{self.passenger} → {self.driver}: {self.stars}★"
+
+
+class ChatMessage(models.Model):
+    ride = models.ForeignKey(Ride, on_delete=models.CASCADE, related_name='messages')
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_messages')
+    message = models.TextField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['timestamp']
+
+    def __str__(self):
+        return f"{self.sender.username} - {self.ride.id}: {self.message[:50]}"
+
+
+class Location(models.Model):
+    ride = models.ForeignKey(Ride, on_delete=models.CASCADE, related_name='locations')
+    driver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='location_updates')
+    latitude = models.FloatField()
+    longitude = models.FloatField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"{self.driver.username} - ({self.latitude}, {self.longitude}) at {self.timestamp}"
