@@ -1,5 +1,9 @@
 from django.db.models import Q, Sum, F, Avg
 from django.utils import timezone
+from django.views.generic import TemplateView
+from django.conf import settings
+from django.http import FileResponse
+import os
 
 from rest_framework import status, viewsets, mixins, serializers
 from rest_framework.decorators import action
@@ -672,3 +676,13 @@ class LocationViewSet(viewsets.GenericViewSet,
             return Response(LocationSerializer(location).data)
         except Location.DoesNotExist:
             return Response({'detail': 'No location updates available.'}, status=status.HTTP_404_NOT_FOUND)
+
+
+# Frontend serving view
+class FrontendView(TemplateView):
+    """Serve the frontend index.html for SPA routing"""
+    template_name = 'frontend/index.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        return context
