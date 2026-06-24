@@ -60,6 +60,7 @@ const app = {
       username: localStorage.getItem('username'),
       role:     localStorage.getItem('role'),
     };
+    this._resetBooking();
     this.showView('home');
   },
 
@@ -281,8 +282,24 @@ const app = {
     ['access_token','refresh_token','user_id','username','role','phone','first_name','last_name'].forEach(k => localStorage.removeItem(k));
     this.currentUser = null;
     this.currentRide = null;
+    this._resetBooking();
     if (this.locationPollTimer) clearTimeout(this.locationPollTimer);
     this.showAuthView('login');
+  },
+
+  // Wipe every booking form field and return to step 1
+  _resetBooking() {
+    this.selectedTransport = null;
+    this._searchResults    = [];
+    const sel = (id) => document.getElementById(id);
+    if (sel('book-from-province')) sel('book-from-province').value = '';
+    if (sel('book-to-province'))   sel('book-to-province').value   = '';
+    if (sel('book-car-type'))      sel('book-car-type').value      = '';
+    if (sel('book-seat'))          sel('book-seat').value          = 'FRONT';
+    if (sel('book-payment'))       sel('book-payment').value       = 'cash';
+    const results = sel('available-rides');
+    if (results) results.innerHTML = '';
+    if (sel('book-step-1')) this.goToBookStep(1);
   },
 
   // --------------------------------------------------
