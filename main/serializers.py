@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Province, Route, Transport, DriverProfile, PassengerProfile, Ride, Rating, DriverDocument, ChatMessage, Location
+from .models import Province, Route, Transport, DriverProfile, PassengerProfile, Ride, Rating, DriverDocument, ChatMessage, Location, ProvinceChoices
 
 class ProvinceSerializer(serializers.ModelSerializer):
     class Meta:
@@ -55,7 +55,9 @@ class PassengerProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ['total_trips', 'joining_date']
 
 class RideSerializer(serializers.ModelSerializer):
-    passenger = serializers.CharField(source='passenger.username', read_only=True)
+    passenger      = serializers.CharField(source='passenger.username', read_only=True)
+    from_province  = serializers.ChoiceField(choices=ProvinceChoices.choices)
+    to_province    = serializers.ChoiceField(choices=ProvinceChoices.choices)
 
     class Meta:
         model = Ride

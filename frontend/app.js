@@ -318,7 +318,7 @@ const app = {
         <div class="ride-info">
           <h4>${t.driver}</h4>
           <p>${t.model} · ${t.type}</p>
-          <p style="font-size:11px;color:var(--text-dim);">${t.from_province} → ${t.to_province}</p>
+          <p style="font-size:11px;color:var(--text-dim);">${app._provinceName(t.from_province)} → ${app._provinceName(t.to_province)}</p>
         </div>
         <div>
           <div class="ride-price">★ ${t.driver_rating ?? '—'}</div>
@@ -339,11 +339,11 @@ const app = {
     document.getElementById('book-confirm-details').innerHTML = `
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
         <span style="width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0;"></span>
-        <span style="font-size:14px;">From: Province ${t.from_province}</span>
+        <span style="font-size:14px;">From: ${app._provinceName(t.from_province)}</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
         <span style="width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;"></span>
-        <span style="font-size:14px;">To: Province ${t.to_province}</span>
+        <span style="font-size:14px;">To: ${app._provinceName(t.to_province)}</span>
       </div>
       <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);font-size:14px;">
         <span style="color:var(--text-dim);">Driver</span><strong>${t.driver}</strong>
@@ -367,6 +367,12 @@ const app = {
     });
   },
 
+  // Province value → human-readable label
+  _provinceName(val) {
+    if (!val) return '—';
+    return val.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  },
+
   async confirmAndBook() {
     if (!this.selectedTransport) { this.toast('Please select a ride first.', 'error'); return; }
 
@@ -381,8 +387,8 @@ const app = {
     const res = await this.api('/rides/', 'POST', {
       driver:          t.driver_id || t.id,
       route:           t.route || null,
-      from_province:   t.from_province_id || null,
-      to_province:     t.to_province_id   || null,
+      from_province:   t.from_province,
+      to_province:     t.to_province,
       seat,
       departure_time:  depTime.toISOString(),
       price:           '0.00',

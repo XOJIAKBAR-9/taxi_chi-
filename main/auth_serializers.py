@@ -1,7 +1,7 @@
 from datetime import date
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-from .models import User, PassengerProfile, DriverProfile, Transport, Ride, Province, Route
+from .models import User, PassengerProfile, DriverProfile, Transport, Ride, Province, Route, ProvinceChoices
 
 class RegisterPassengerSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=150)
@@ -48,8 +48,8 @@ class RegisterDriverSerializer(serializers.Serializer):
     transport_model = serializers.CharField(max_length=255)
     transport_year = serializers.IntegerField()
     transport_type = serializers.ChoiceField(choices=Transport.TYPE.choices)
-    from_province = serializers.CharField(max_length=255)
-    to_province = serializers.CharField(max_length=255)
+    from_province = serializers.ChoiceField(choices=ProvinceChoices.choices)
+    to_province   = serializers.ChoiceField(choices=ProvinceChoices.choices)
 
     def validate(self, data):
         if data['password'] != data['password2']:
@@ -138,9 +138,9 @@ class ChangePasswordSerializer(serializers.Serializer):
 
 
 class RideSearchSerializer(serializers.Serializer):
-    from_province = serializers.IntegerField(required=False)
-    to_province = serializers.IntegerField(required=False)
-    route = serializers.IntegerField(required=False)
+    from_province = serializers.ChoiceField(choices=ProvinceChoices.choices, required=False)
+    to_province   = serializers.ChoiceField(choices=ProvinceChoices.choices, required=False)
+    route    = serializers.IntegerField(required=False)
     car_type = serializers.ChoiceField(choices=Transport.TYPE.choices, required=False)
-    date = serializers.DateField(required=False)
-    seat = serializers.ChoiceField(choices=Ride.SEAT.choices, required=False)
+    date     = serializers.DateField(required=False)
+    seat     = serializers.ChoiceField(choices=Ride.SEAT.choices, required=False)

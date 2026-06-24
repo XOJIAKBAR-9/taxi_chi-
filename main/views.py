@@ -139,10 +139,10 @@ class TransportViewSet(viewsets.GenericViewSet,
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name='from_province', description='Filter by from province ID', required=False, type=OpenApiTypes.INT),
-            OpenApiParameter(name='to_province', description='Filter by to province ID', required=False, type=OpenApiTypes.INT),
-            OpenApiParameter(name='type', description='Filter by type (ORDINARY, COMFORT, LUXURY)', required=False, type=OpenApiTypes.STR),
-            OpenApiParameter(name='route', description='Filter by route ID', required=False, type=OpenApiTypes.INT),
+            OpenApiParameter(name='from_province', description='Filter by from province (e.g. fergana)', required=False, type=OpenApiTypes.STR),
+            OpenApiParameter(name='to_province',   description='Filter by to province (e.g. tashkent_city)', required=False, type=OpenApiTypes.STR),
+            OpenApiParameter(name='type',          description='Filter by type (ORDINARY, COMFORT, LUXURY)', required=False, type=OpenApiTypes.STR),
+            OpenApiParameter(name='route',         description='Filter by route ID', required=False, type=OpenApiTypes.INT),
         ]
     )
     def list(self, request, *args, **kwargs):
@@ -152,9 +152,9 @@ class TransportViewSet(viewsets.GenericViewSet,
         qs     = Transport.objects.all()
         params = self.request.query_params
         if params.get('from_province'):
-            qs = qs.filter(from_province_id=params['from_province'])
+            qs = qs.filter(from_province=params['from_province'])
         if params.get('to_province'):
-            qs = qs.filter(to_province_id=params['to_province'])
+            qs = qs.filter(to_province=params['to_province'])
         if params.get('type'):
             qs = qs.filter(type=params['type'])
         if params.get('route'):
@@ -190,9 +190,9 @@ class DriverViewSet(viewsets.GenericViewSet,
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name='from_province', description='Filter by from province ID', required=False, type=OpenApiTypes.INT),
-            OpenApiParameter(name='to_province', description='Filter by to province ID', required=False, type=OpenApiTypes.INT),
-            OpenApiParameter(name='min_rating', description='Filter by minimum rating', required=False, type=OpenApiTypes.FLOAT),
+            OpenApiParameter(name='from_province', description='Filter by from province (e.g. fergana)', required=False, type=OpenApiTypes.STR),
+            OpenApiParameter(name='to_province',   description='Filter by to province (e.g. tashkent_city)', required=False, type=OpenApiTypes.STR),
+            OpenApiParameter(name='min_rating',    description='Filter by minimum rating', required=False, type=OpenApiTypes.FLOAT),
         ]
     )
     def list(self, request, *args, **kwargs):
@@ -202,9 +202,9 @@ class DriverViewSet(viewsets.GenericViewSet,
         qs     = DriverProfile.objects.all().order_by('-avg_rating')
         params = self.request.query_params
         if params.get('from_province'):
-            qs = qs.filter(driver__transport_info__from_province_id=params['from_province'])
+            qs = qs.filter(driver__transport_info__from_province=params['from_province'])
         if params.get('to_province'):
-            qs = qs.filter(driver__transport_info__to_province_id=params['to_province'])
+            qs = qs.filter(driver__transport_info__to_province=params['to_province'])
         if params.get('min_rating'):
             qs = qs.filter(avg_rating__gte=params['min_rating'])
         return qs
@@ -352,12 +352,12 @@ class RideViewSet(viewsets.GenericViewSet,
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name='from_province', description='Filter by from province ID', required=False, type=OpenApiTypes.INT),
-            OpenApiParameter(name='to_province', description='Filter by to province ID', required=False, type=OpenApiTypes.INT),
-            OpenApiParameter(name='route', description='Filter by route ID', required=False, type=OpenApiTypes.INT),
+            OpenApiParameter(name='from_province', description='Filter by from province (e.g. fergana)', required=False, type=OpenApiTypes.STR),
+            OpenApiParameter(name='to_province',   description='Filter by to province (e.g. tashkent_city)', required=False, type=OpenApiTypes.STR),
+            OpenApiParameter(name='route',    description='Filter by route ID', required=False, type=OpenApiTypes.INT),
             OpenApiParameter(name='car_type', description='Filter by car type (ORDINARY, COMFORT, LUXURY)', required=False, type=OpenApiTypes.STR),
-            OpenApiParameter(name='date', description='Filter by date (YYYY-MM-DD)', required=False, type=OpenApiTypes.DATE),
-            OpenApiParameter(name='seat', description='Filter by seat (FRONT, BACK)', required=False, type=OpenApiTypes.STR),
+            OpenApiParameter(name='date',     description='Filter by date (YYYY-MM-DD)', required=False, type=OpenApiTypes.DATE),
+            OpenApiParameter(name='seat',     description='Filter by seat (FRONT, BACK)', required=False, type=OpenApiTypes.STR),
         ]
     )
     @action(detail=False, methods=['get'])
@@ -368,9 +368,9 @@ class RideViewSet(viewsets.GenericViewSet,
 
         transports = Transport.objects.all()
         if data.get('from_province'):
-            transports = transports.filter(from_province_id=data['from_province'])
+            transports = transports.filter(from_province=data['from_province'])
         if data.get('to_province'):
-            transports = transports.filter(to_province_id=data['to_province'])
+            transports = transports.filter(to_province=data['to_province'])
         if data.get('route'):
             transports = transports.filter(route_id=data['route'])
         if data.get('car_type'):

@@ -3,6 +3,23 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.contrib.auth.models import AbstractUser
 
 
+class ProvinceChoices(models.TextChoices):
+    ANDIJAN        = 'andijan',        'Andijan'
+    BUKHARA        = 'bukhara',        'Bukhara'
+    FERGANA        = 'fergana',        'Fergana'
+    JIZZAKH        = 'jizzakh',        'Jizzakh'
+    KARAKALPAKSTAN = 'karakalpakstan', 'Karakalpakstan'
+    KASHKADARYA    = 'kashkadarya',    'Kashkadarya'
+    KHOREZM        = 'khorezm',        'Khorezm'
+    NAMANGAN       = 'namangan',       'Namangan'
+    NAVOIY         = 'navoiy',         'Navoiy'
+    SAMARKAND      = 'samarkand',      'Samarkand'
+    SIRDARYO       = 'sirdaryo',       'Sirdaryo'
+    SURKHANDARYA   = 'surkhandarya',   'Surkhandarya'
+    TASHKENT_CITY  = 'tashkent_city',  'Tashkent City'
+    TASHKENT_REGION= 'tashkent_region','Tashkent Region'
+
+
 class User(AbstractUser):
     class ROLE(models.TextChoices):
         DRIVER = 'DRIVER', 'Driver'
@@ -37,8 +54,8 @@ class Transport(models.Model):
         LUXURY = "LUXURY", "Luxury"
 
     driver = models.OneToOneField(User, on_delete=models.CASCADE, related_name="transport_info")
-    from_province = models.CharField(max_length=255)
-    to_province = models.CharField(max_length=255)
+    from_province = models.CharField(max_length=50, choices=ProvinceChoices.choices)
+    to_province   = models.CharField(max_length=50, choices=ProvinceChoices.choices)
     route = models.ForeignKey(Route, on_delete=models.CASCADE, null=True, blank=True)
     model = models.CharField(max_length=255)
     year = models.IntegerField()
@@ -117,9 +134,9 @@ class Ride(models.Model):
     driver = models.ForeignKey(User, on_delete=models.CASCADE, related_name="rides_given")
     passenger = models.ForeignKey(User, on_delete=models.CASCADE, related_name="rides_taken")
 
-    route = models.ForeignKey(Route, on_delete=models.CASCADE)
-    from_province = models.ForeignKey(Province, on_delete=models.CASCADE, related_name="rides_starting_at")
-    to_province = models.ForeignKey(Province, on_delete=models.CASCADE, related_name="rides_ending_at")
+    route = models.ForeignKey(Route, on_delete=models.CASCADE, null=True, blank=True)
+    from_province = models.CharField(max_length=50, choices=ProvinceChoices.choices, default='tashkent_city')
+    to_province   = models.CharField(max_length=50, choices=ProvinceChoices.choices, default='tashkent_city')
 
     seat = models.CharField(max_length=20, choices=SEAT.choices)
     departure_time = models.DateTimeField()
