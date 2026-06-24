@@ -33,7 +33,7 @@ from .auth_serializers import (
     ChangePasswordSerializer,
     RideSearchSerializer,
 )
-from .permissions import IsDriver, IsPassenger, IsRideParticipant, IsRideParticipantByURL
+from .permissions import IsDriver, IsPassenger, IsPassengerOnly, IsRideParticipant, IsRideParticipantByURL
 
 
 class AuthViewSet(viewsets.GenericViewSet):
@@ -304,7 +304,7 @@ class RideViewSet(viewsets.GenericViewSet,
         if self.action == 'search':
             return [AllowAny()]
         if self.action == 'create':
-            return [IsAuthenticated(), IsPassenger()]
+            return [IsAuthenticated(), IsPassengerOnly()]
         if self.action in ('update_status', 'payment'):
             return [IsAuthenticated(), IsDriver()]
         if self.action == 'cancel':

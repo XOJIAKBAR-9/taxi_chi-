@@ -47,3 +47,22 @@ class IsVerifiedDriver(BasePermission):
             and hasattr(request.user, 'driver_profile')
             and request.user.driver_profile.is_verified
         )
+
+
+class IsPassengerOnly(BasePermission):
+    """
+    Blocks any user who is a driver (by role) or whose driver profile is
+    currently online. Prevents drivers from booking rides as passengers.
+    """
+    message = 'Active drivers are not permitted to book rides.'
+
+    def has_permission(self, request, view):
+        if not (request.user and request.user.is_authenticated):
+            return False
+        if request.user.role == User.ROLE.DRIVER:
+            return False
+        # Extra guard: if somehow a non-driver account has an online driver profile
+        driver_profile = getattr(request.user, 'driver_profile', None)
+        if driver_profile and driver_profile.is_online:
+            return False
+        return True

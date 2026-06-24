@@ -68,6 +68,16 @@ class RideSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['payment_status', 'status', 'created_at', 'updated_at']
 
+    def validate(self, data):
+        request = self.context.get('request')
+        if request and request.user and request.user.is_authenticated:
+            from .models import User
+            if request.user.role == User.ROLE.DRIVER:
+                raise serializers.ValidationError(
+                    'Active drivers are not permitted to book rides.'
+                )
+        return data
+
 class RatingSerializer(serializers.ModelSerializer):
     passenger = serializers.CharField(source='passenger.username', read_only=True)
     driver = serializers.CharField(source='driver.username', read_only=True)
