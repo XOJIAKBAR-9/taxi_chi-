@@ -4,6 +4,7 @@ from django.views.generic import TemplateView
 from django.conf import settings
 from django.http import FileResponse
 import os
+import random
 
 from rest_framework import status, viewsets, mixins, serializers
 from rest_framework.decorators import action
@@ -506,6 +507,28 @@ class RatingViewSet(viewsets.GenericViewSet):
         return Response({'detail': 'No rating exists for this ride.'}, status=status.HTTP_404_NOT_FOUND)
 
 
+# ---------------------------------------------------------------------------
+# Mock OCR / KYC verification utility
+# ---------------------------------------------------------------------------
+# Simulates an external document-verification API (e.g. Google Vision, Veriff).
+# In production, replace the body with a real HTTP call to your KYC provider.
+# Returns a dict:  {'ok': True}  or  {'ok': False, 'reason': '<why it failed>'}
+
+_OCR_FAILURE_REASONS = [
+    'Image too blurry — please retake in better lighting.',
+    'Document corners not fully visible in the frame.',
+    'Glare detected — avoid direct light on the document.',
+    'Text unreadable — ensure the document is flat and in focus.',
+    'Expired document detected.',
+]
+
+def verify_document_with_ocr(document_instance):
+    """Mock external OCR/KYC call.  80 % pass rate."""
+    if random.random() < 0.80:          # 80 % → approved
+        return {'ok': True}
+    return {'ok': False, 'reason': random.choice(_OCR_FAILURE_REASONS)}
+
+
 class DriverDocumentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
     serializer_class = DriverDocumentSerializer
 
@@ -522,8 +545,29 @@ class DriverDocumentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
     def create(self, request, *args, **kwargs):
         s = DriverDocumentSerializer(data=request.data)
         s.is_valid(raise_exception=True)
-        s.save(driver=request.user, status=DriverDocument.Status.PENDING)
-        return Response(s.data, status=status.HTTP_201_CREATED)
+        document = s.save(driver=request.user, status=DriverDocument.Status.PENDING)
+
+        # ── Automated OCR / KYC verification ──────────────────────────────
+        result = verify_document_with_ocr(document)
+
+        if result['ok']:
+            document.status      = DriverDocument.Status.APPROVED
+            document.admin_note  = 'Auto-approved by OCR verification.'
+            document.reviewed_at = timezone.now()
+            document.save(update_fields=['status', 'admin_note', 'reviewed_at'])
+
+            # Verify driver profile when a license is approved
+            if document.doc_type == DriverDocument.DocType.LICENSE_WITH_ID:
+                profile = document.driver.driver_profile
+                profile.is_verified = True
+                profile.save(update_fields=['is_verified'])
+        else:
+            document.status      = DriverDocument.Status.REJECTED
+            document.admin_note  = result['reason']
+            document.reviewed_at = timezone.now()
+            document.save(update_fields=['status', 'admin_note', 'reviewed_at'])
+
+        return Response(DriverDocumentSerializer(document).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['patch'])
     def review(self, request, pk=None):
