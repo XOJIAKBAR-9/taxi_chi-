@@ -631,6 +631,8 @@ const app = {
     document.getElementById('profile-rating-pill').style.display      = 'none';
     document.getElementById('profile-vehicle-card').style.display     = 'none';
     document.getElementById('profile-docs-card').style.display        = 'none';
+    const driverOcrCard = document.getElementById('driver-ocr-card');
+    if (driverOcrCard) driverOcrCard.style.display = 'none';
     document.getElementById('profile-online-bar').classList.remove('active');
     document.getElementById('profile-identity-card').classList.remove('profile-identity-card--online');
     // ── Always reset passenger-only DOM sections ─────────────────────────────
@@ -684,6 +686,9 @@ const app = {
           document.getElementById('profile-docs-card').style.display = 'block';
           this._renderDocuments(docsRes);
         }
+
+        // Show OCR scan card for drivers
+        if (driverOcrCard) driverOcrCard.style.display = 'block';
 
       } else {
         // ── Passenger layout ────────────────────────────────────────────────
@@ -840,6 +845,87 @@ const app = {
     }
     this.loading(false);
     input.value = '';
+  },
+
+  // --------------------------------------------------
+  // DRIVER — OCR.space document scan
+  // --------------------------------------------------
+  _OCR_API_KEY: 'K85174047988957',
+
+  _ocrSetState(state) {
+    ['idle', 'uploading', 'success', 'error'].forEach(s => {
+      const el = document.getElementById('ocr-state-' + s);
+      if (el) el.style.display = s === state ? 'block' : 'none';
+    });
+  },
+
+  async runDriverOcr(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    // Show preview in both uploading + success panels
+    const url = URL.createObjectURL(file);
+    const prev1 = document.getElementById('ocr-preview');
+    const prev2 = document.getElementById('ocr-preview-success');
+    if (prev1) prev1.src = url;
+    if (prev2) prev2.src = url;
+
+    this._ocrSetState('uploading');
+
+    try {
+      const form = new FormData();
+      form.append('file',               file);
+      form.append('apikey',             this._OCR_API_KEY);
+      form.append('language',           'eng');
+      form.append('isOverlayRequired',  'false');
+      form.append('OCREngine',          '2');   // Engine 2 — highest accuracy
+
+      const res    = await fetch('https://api.ocr.space/parse/image', { method: 'POST', body: form });
+      const result = await res.json();
+
+      if (result.IsErroredOnProcessing) {
+        this._ocrShowError(result.ErrorMessage?.[0] || 'OCR failed. Please try again.');
+        return;
+      }
+
+      const text = result.ParsedResults?.[0]?.ParsedText || '';
+      if (!text.trim()) {
+        this._ocrShowError('No text found. Try a clearer image.');
+        return;
+      }
+
+      // Success — show extracted text and mark identity as verified
+      const textEl = document.getElementById('ocr-extracted-text');
+      if (textEl) textEl.textContent = text;
+      this._ocrSetState('success');
+
+      // Update verified badge on the identity card
+      const badge = document.getElementById('driver-verified-badge');
+      if (badge) badge.style.display = 'inline-flex';
+
+    } catch (e) {
+      this._ocrShowError('Network error — check your connection and try again.');
+    }
+
+    input.value = '';
+  },
+
+  _ocrShowError(msg) {
+    const el = document.getElementById('ocr-error-msg');
+    if (el) el.textContent = msg;
+    this._ocrSetState('error');
+  },
+
+  resetDriverOcr() {
+    this._ocrSetState('idle');
+    const fields = ['ocr-extracted-text', 'ocr-error-msg'];
+    fields.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ''; });
+    ['ocr-preview', 'ocr-preview-success'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.src = '';
+    });
+    const input = document.getElementById('ocr-file-input');
+    if (input) input.value = '';
   },
 };
 
