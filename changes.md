@@ -13,3 +13,5 @@ The system opens a temporary "Support Ticket" and notifies the driver.
 For the Driver:
 The driver receives a push notification: "Did you find a [Black backpack] in your Chevrolet Cobalt?"
 The driver checks the car. They tap either "Yes, I have it" or "No, I couldn't find it."
+
+2. When passenger first sings up there must be a configuration part for payment method like by default cash or sth like that. <!-- Moreover think of a cashback as well like after 10 successfull rides there must be a discount of 50% or not.  -->
