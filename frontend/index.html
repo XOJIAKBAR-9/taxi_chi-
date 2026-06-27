@@ -633,68 +633,7 @@
           </div>
         </div>
 
-        <!-- 5. OCR Document Scan — drivers only -->
-        <div class="profile-docs-card" id="driver-ocr-card" style="display:none;margin-bottom:20px;">
-          <div class="profile-docs-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3z"/><path d="M3 9h18M9 21V9"/></svg>
-            Document Scan (OCR)
-          </div>
-          <p style="font-size:13px;color:var(--text-dim);margin-bottom:16px;">Scan your licence or vehicle registration for auto-verification.</p>
 
-          <!-- idle state -->
-          <div id="ocr-state-idle">
-            <label class="ocr-upload-zone" for="ocr-file-input">
-              <div class="ocr-upload-icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              </div>
-              <div style="text-align:center;">
-                <div style="font-weight:600;font-size:14px;color:var(--text);">Upload Document</div>
-                <div style="font-size:12px;color:var(--text-dim);margin-top:4px;">JPG, PNG or PDF — max 1 MB</div>
-              </div>
-            </label>
-            <input type="file" id="ocr-file-input" accept="image/*,.pdf" style="display:none" onchange="app.runDriverOcr(this)">
-          </div>
-
-          <!-- uploading state -->
-          <div id="ocr-state-uploading" style="display:none">
-            <img id="ocr-preview" src="" alt="preview" class="ocr-preview">
-            <div class="ocr-status-row ocr-status-loading">
-              <svg class="ocr-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-6.22-8.56"/></svg>
-              Scanning document…
-            </div>
-          </div>
-
-          <!-- success state -->
-          <div id="ocr-state-success" style="display:none">
-            <img id="ocr-preview-success" src="" alt="preview" class="ocr-preview">
-            <div class="ocr-status-row ocr-status-success">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-              Document scanned successfully
-            </div>
-            <div class="ocr-extracted-box">
-              <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-weight:600;">Extracted Text</div>
-              <pre id="ocr-extracted-text" class="ocr-extracted-text"></pre>
-            </div>
-            <button class="ocr-reset-btn" onclick="app.resetDriverOcr()">Upload a different document</button>
-          </div>
-
-          <!-- error state -->
-          <div id="ocr-state-error" style="display:none">
-            <div class="ocr-status-row ocr-status-error">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-              <div>
-                <div style="font-weight:600;">Scan failed</div>
-                <div id="ocr-error-msg" style="font-size:12px;opacity:.8;margin-top:2px;"></div>
-              </div>
-            </div>
-            <button class="ocr-reset-btn" style="background:var(--surface);color:var(--text);" onclick="app.resetDriverOcr()">Try again</button>
-          </div>
-
-          <div class="ocr-rate-note">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            Free plan: 500 scans/day shared across all users
-          </div>
-        </div>
 
         <!-- Passenger-only section: Payment Methods + Ride History shortcut -->
         <div id="profile-passenger-section" style="display:none">
