@@ -14,4 +14,4 @@ There will be the description of new features outlined each time then accordingl
 
 2. When passenger first sings up there must be a configuration part for payment method like by default cash or sth like that. <!-- Moreover think of a cashback as well like after 10 successfull rides there must be a discount of 50% or not.  -->
 3. Hit enter to sign in or sign up on auth page
-4.
+4. Fix location tracking for passenger user in booking page.
