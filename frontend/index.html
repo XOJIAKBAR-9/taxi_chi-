@@ -411,9 +411,15 @@
             <p class="booking-step-sub">Review your trip details</p>
             <div id="book-confirm-details" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-bottom:20px;"></div>
             <div id="book-driver-proof" class="driver-proof-card" style="display:none;margin-bottom:20px;">
-              <div class="driver-proof-title">Driver Car Photos & Verification</div>
+              <div class="driver-proof-header">
+                <div class="driver-proof-title">Driver Car Photos & Verification</div>
+                <div id="book-driver-verified-count" class="driver-proof-count">0/2 verified</div>
+              </div>
               <div id="book-driver-badges" class="driver-proof-badges"></div>
-              <div id="book-driver-images" class="driver-proof-images"></div>
+              <div id="book-driver-main-image-wrap" class="driver-proof-main-wrap" style="display:none;">
+                <img id="book-driver-main-image" class="driver-proof-main-image" alt="Driver car preview" loading="lazy">
+              </div>
+              <div id="book-driver-images" class="driver-proof-thumbs"></div>
             </div>
             <div class="input-group">
               <label>Seat</label>

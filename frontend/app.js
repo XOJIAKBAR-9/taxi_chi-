@@ -291,6 +291,8 @@ const app = {
   _resetBooking() {
     this.selectedTransport = null;
     this._searchResults    = [];
+    this._bookProofImages  = [];
+    this._bookProofActive  = 0;
     const sel = (id) => document.getElementById(id);
     if (sel('book-from-province')) sel('book-from-province').value = '';
     if (sel('book-to-province'))   sel('book-to-province').value   = '';
@@ -383,30 +385,70 @@ const app = {
   renderBookDriverProof(transport) {
     const panel = document.getElementById('book-driver-proof');
     const badgesEl = document.getElementById('book-driver-badges');
+    const countEl = document.getElementById('book-driver-verified-count');
+    const mainWrap = document.getElementById('book-driver-main-image-wrap');
+    const mainImg = document.getElementById('book-driver-main-image');
     const imagesEl = document.getElementById('book-driver-images');
 
-    if (!panel || !badgesEl || !imagesEl) return;
+    if (!panel || !badgesEl || !countEl || !mainWrap || !mainImg || !imagesEl) return;
 
     const badges = transport?.verification_badges || {};
+    const verifiedCount =
+      (badges.license_with_id_verified ? 1 : 0) +
+      (badges.vehicle_registration_verified ? 1 : 0);
+    countEl.textContent = verifiedCount + '/2 verified';
+
+    const licSvg = badges.license_with_id_verified
+      ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+      : '';
+    const regSvg = badges.vehicle_registration_verified
+      ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+      : '';
     badgesEl.innerHTML = `
-      <span class="doc-badge ${badges.license_with_id_verified ? 'doc-badge--approved' : 'doc-badge--pending'}">
-        ${badges.license_with_id_verified ? 'Verified' : 'Not Verified'}: License & ID
-      </span>
-      <span class="doc-badge ${badges.vehicle_registration_verified ? 'doc-badge--approved' : 'doc-badge--pending'}">
-        ${badges.vehicle_registration_verified ? 'Verified' : 'Not Verified'}: Tech Passport
-      </span>
+      <span class="doc-badge ${badges.license_with_id_verified ? 'doc-badge--approved' : 'doc-badge--pending'}">${licSvg} License &amp; ID</span>
+      <span class="doc-badge ${badges.vehicle_registration_verified ? 'doc-badge--approved' : 'doc-badge--pending'}">${regSvg} Tech Passport</span>
     `;
 
     const photos = Array.isArray(transport?.car_images) ? transport.car_images : [];
+    this._bookProofImages = photos;
+    this._bookProofActive = 0;
+
     if (!photos.length) {
-      imagesEl.innerHTML = '<p class="driver-proof-empty">No approved car photos available yet.</p>';
+      mainWrap.style.display = 'none';
+      imagesEl.style.display = 'none';
+      imagesEl.innerHTML = '';
     } else {
-      imagesEl.innerHTML = photos
-        .map(p => `<img src="${p.url}" alt="Driver car photo" class="driver-proof-image" loading="lazy">`)
-        .join('');
+      mainImg.src = photos[0].url;
+      mainWrap.style.display = 'block';
+      if (photos.length > 1) {
+        imagesEl.style.display = 'flex';
+        imagesEl.innerHTML = photos
+          .map((p, i) => `
+            <button type="button" class="driver-proof-thumb ${i === 0 ? 'is-active' : ''}" onclick="app.selectBookProofImage(${i})">
+              <img src="${p.url}" alt="Driver car photo ${i + 1}" loading="lazy">
+            </button>
+          `)
+          .join('');
+      } else {
+        imagesEl.style.display = 'none';
+        imagesEl.innerHTML = '';
+      }
     }
 
     panel.style.display = 'block';
+  },
+
+  selectBookProofImage(index) {
+    const photos = this._bookProofImages || [];
+    if (!photos[index]) return;
+
+    this._bookProofActive = index;
+    const mainImg = document.getElementById('book-driver-main-image');
+    if (mainImg) mainImg.src = photos[index].url;
+
+    document.querySelectorAll('#book-driver-images .driver-proof-thumb').forEach((el, i) => {
+      el.classList.toggle('is-active', i === index);
+    });
   },
 
   goToBookStep(n) {
