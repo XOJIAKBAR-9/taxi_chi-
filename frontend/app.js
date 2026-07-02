@@ -299,6 +299,8 @@ const app = {
     if (sel('book-payment'))       sel('book-payment').value       = 'cash';
     const results = sel('available-rides');
     if (results) results.innerHTML = '';
+    const proof = sel('book-driver-proof');
+    if (proof) proof.style.display = 'none';
     if (sel('book-step-1')) this.goToBookStep(1);
   },
 
@@ -373,7 +375,38 @@ const app = {
       </div>
     `;
 
+    this.renderBookDriverProof(t);
+
     this.goToBookStep(3);
+  },
+
+  renderBookDriverProof(transport) {
+    const panel = document.getElementById('book-driver-proof');
+    const badgesEl = document.getElementById('book-driver-badges');
+    const imagesEl = document.getElementById('book-driver-images');
+
+    if (!panel || !badgesEl || !imagesEl) return;
+
+    const badges = transport?.verification_badges || {};
+    badgesEl.innerHTML = `
+      <span class="doc-badge ${badges.license_with_id_verified ? 'doc-badge--approved' : 'doc-badge--pending'}">
+        ${badges.license_with_id_verified ? 'Verified' : 'Not Verified'}: License & ID
+      </span>
+      <span class="doc-badge ${badges.vehicle_registration_verified ? 'doc-badge--approved' : 'doc-badge--pending'}">
+        ${badges.vehicle_registration_verified ? 'Verified' : 'Not Verified'}: Tech Passport
+      </span>
+    `;
+
+    const photos = Array.isArray(transport?.car_images) ? transport.car_images : [];
+    if (!photos.length) {
+      imagesEl.innerHTML = '<p class="driver-proof-empty">No approved car photos available yet.</p>';
+    } else {
+      imagesEl.innerHTML = photos
+        .map(p => `<img src="${p.url}" alt="Driver car photo" class="driver-proof-image" loading="lazy">`)
+        .join('');
+    }
+
+    panel.style.display = 'block';
   },
 
   goToBookStep(n) {
@@ -397,12 +430,17 @@ const app = {
     const payment = document.getElementById('book-payment').value;
     const t       = this.selectedTransport;
 
+    if (!t.driver_id) {
+      this.toast('Selected driver data is invalid. Please search again.', 'error');
+      return;
+    }
+
     const depTime = new Date();
     depTime.setHours(depTime.getHours() + 1);
 
     this.loading(true);
     const res = await this.api('/rides/', 'POST', {
-      driver:          t.driver_id || t.id,
+      driver:          t.driver_id,
       route:           t.route || null,
       from_province:   t.from_province,
       to_province:     t.to_province,

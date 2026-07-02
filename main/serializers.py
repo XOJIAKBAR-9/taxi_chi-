@@ -18,16 +18,57 @@ class RouteSerializer(serializers.ModelSerializer):
 
 class TransportSerializer(serializers.ModelSerializer):
     driver = serializers.CharField(source='driver.username', read_only=True)
+    driver_id = serializers.IntegerField(source='driver.id', read_only=True)
     driver_rating = serializers.SerializerMethodField()
+    verification_badges = serializers.SerializerMethodField()
+    car_images = serializers.SerializerMethodField()
 
     class Meta:
         model = Transport
-        fields = ['id', 'driver', 'from_province', 'to_province', 'route', 'model', 'year', 'type', 'driver_rating']
+        fields = [
+            'id', 'driver_id', 'driver', 'from_province', 'to_province', 'route',
+            'model', 'year', 'type', 'driver_rating', 'verification_badges', 'car_images'
+        ]
         
     def get_driver_rating(self, obj):
         if hasattr(obj.driver, 'driver_profile'):
             return obj.driver.driver_profile.avg_rating
         return None
+
+    def get_verification_badges(self, obj):
+        return {
+            'license_with_id_verified': DriverDocument.objects.filter(
+                driver=obj.driver,
+                doc_type=DriverDocument.DocType.LICENSE_WITH_ID,
+                status=DriverDocument.Status.APPROVED,
+            ).exists(),
+            'vehicle_registration_verified': DriverDocument.objects.filter(
+                driver=obj.driver,
+                doc_type=DriverDocument.DocType.VEHICLE_REGISTRATION,
+                status=DriverDocument.Status.APPROVED,
+            ).exists(),
+        }
+
+    def get_car_images(self, obj):
+        request = self.context.get('request')
+        docs = DriverDocument.objects.filter(
+            driver=obj.driver,
+            doc_type=DriverDocument.DocType.CAR_PHOTO,
+            status=DriverDocument.Status.APPROVED,
+        ).order_by('-uploaded_at')[:4]
+
+        images = []
+        for d in docs:
+            if not d.file:
+                continue
+            url = d.file.url
+            if request:
+                url = request.build_absolute_uri(url)
+            images.append({
+                'id': d.id,
+                'url': url,
+            })
+        return images
 
 class DriverProfileSerializer(serializers.ModelSerializer):
     driver = serializers.CharField(source='driver.username', read_only=True)

@@ -125,6 +125,16 @@ class TaxiChiTests(APITestCase):
         res_dup = self.client.post(self.ride_url, data)
         self.assertEqual(res_dup.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_ride_search_returns_driver_id(self):
+        res = self.client.get('/api/rides/search/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(res.data['count'], 1)
+        first = res.data['results'][0]
+        self.assertIn('driver_id', first)
+        self.assertIn('verification_badges', first)
+        self.assertIn('car_images', first)
+        self.assertEqual(first['driver_id'], self.driver_user.id)
+
     def test_ride_status_transitions(self):
         ride = Ride.objects.create(
             driver=self.driver_user, passenger=self.passenger_user, route=self.route,
