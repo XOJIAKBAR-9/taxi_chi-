@@ -11,5 +11,5 @@ There will be the description of new features outlined each time then accordingl
    For the Driver:
    The driver receives a push notification: "Did you find a [Black backpack] in your Chevrolet Cobalt?"
    The driver checks the car. They tap either "Yes, I have it" or "No, I couldn't find it."
-4. Fix location tracking for passenger user in booking page.
-5. 
+2.  Fix location tracking for passenger user in booking page.
+3. Think of optimizing mobile responsivness
