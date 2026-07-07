@@ -234,6 +234,47 @@ class TaxiChiTests(APITestCase):
         pending_after = self.client.get('/api/drivers/lost-item-reports/')
         self.assertEqual(len(pending_after.data), 0)
 
+    def test_driver_cannot_report_lost_item(self):
+        ride = self._create_completed_ride()
+        url = f"/api/rides/{ride.id}/lost-item/"
+
+        self.client.force_authenticate(user=self.driver_user)
+        res = self.client.post(url, {
+            'item_description': 'Wallet',
+            'share_contact': False,
+        })
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_passenger_lost_item_notification_messages(self):
+        ride = self._create_completed_ride()
+        url = f"/api/rides/{ride.id}/lost-item/"
+
+        self.client.force_authenticate(user=self.passenger_user)
+        res = self.client.post(url, {
+            'item_description': 'Black backpack',
+            'share_contact': False,
+        })
+        self.assertIn('Black backpack', res.data['passenger_notification_message'])
+
+        self.client.force_authenticate(user=self.driver_user)
+        res_yes = self.client.patch(f"{url}respond/", {'driver_response': 'yes'})
+        self.assertIn('found your Black backpack', res_yes.data['passenger_notification_message'])
+
+        ride2 = self._create_completed_ride()
+        url2 = f"/api/rides/{ride2.id}/lost-item/"
+        self.client.force_authenticate(user=self.passenger_user)
+        self.client.post(url2, {'item_description': 'Phone', 'share_contact': False})
+
+        self.client.force_authenticate(user=self.driver_user)
+        res_no = self.client.patch(f"{url2}respond/", {'driver_response': 'no'})
+        self.assertIn('could not find your Phone', res_no.data['passenger_notification_message'])
+
+        passenger_reports = self.client.get('/api/passengers/lost-item-reports/')
+        self.client.force_authenticate(user=self.passenger_user)
+        passenger_reports = self.client.get('/api/passengers/lost-item-reports/')
+        self.assertEqual(passenger_reports.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(len(passenger_reports.data), 2)
+
     def test_lost_item_report_requires_completed_ride(self):
         ride = Ride.objects.create(
             driver=self.driver_user, passenger=self.passenger_user, route=self.route,
@@ -247,3 +288,37 @@ class TaxiChiTests(APITestCase):
             'share_contact': False,
         })
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_ride_end_by_passenger_and_driver(self):
+        ride = Ride.objects.create(
+            driver=self.driver_user, passenger=self.passenger_user, route=self.route,
+            from_province='tashkent_city', to_province='samarkand', seat=Ride.SEAT.BACK,
+            departure_time=timezone.now(), price=100.0, payment_method=Ride.PaymentMethod.CASH,
+            status=Ride.Status.PENDING, payment_status=Ride.PaymentStatus.UNPAID
+        )
+
+        self.client.force_authenticate(user=self.passenger_user)
+        res = self.client.post(f"{self.ride_url}{ride.id}/end/")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['status'], Ride.Status.COMPLETED)
+
+        ride.refresh_from_db()
+        self.assertEqual(ride.status, Ride.Status.COMPLETED)
+        self.passenger_profile.refresh_from_db()
+        self.driver_profile.refresh_from_db()
+        self.assertEqual(self.passenger_profile.total_trips, 1)
+        self.assertEqual(self.driver_profile.total_trips, 1)
+
+        res_again = self.client.post(f"{self.ride_url}{ride.id}/end/")
+        self.assertEqual(res_again.status_code, status.HTTP_400_BAD_REQUEST)
+
+        ride2 = Ride.objects.create(
+            driver=self.driver_user, passenger=self.passenger_user, route=self.route,
+            from_province='tashkent_city', to_province='samarkand', seat=Ride.SEAT.FRONT,
+            departure_time=timezone.now(), price=80.0, payment_method=Ride.PaymentMethod.CASH,
+            status=Ride.Status.IN_PROGRESS, payment_status=Ride.PaymentStatus.UNPAID
+        )
+        self.client.force_authenticate(user=self.driver_user)
+        res_driver = self.client.post(f"{self.ride_url}{ride2.id}/end/")
+        self.assertEqual(res_driver.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_driver.data['status'], Ride.Status.COMPLETED)

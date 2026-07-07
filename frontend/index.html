@@ -469,10 +469,11 @@
           <div id="driver-status-card" class="driver-status" style="display:none;">
             <div class="driver-avatar" id="driver-avatar-initials">--</div>
             <div class="driver-info">
-              <h4 id="driver-name">Driver</h4>
-              <p id="driver-vehicle">Vehicle info</p>
+              <h4 id="ride-counterpart-label">Driver</h4>
+              <p id="driver-name">—</p>
+              <p id="driver-vehicle" class="vehicle-sub">—</p>
             </div>
-            <div class="driver-rating" id="driver-rating">★ -</div>
+            <div class="driver-rating" id="driver-rating">★ —</div>
           </div>
 
           <!-- No active ride placeholder -->
@@ -520,7 +521,8 @@
 
           <!-- Actions (when ride is active) -->
           <div id="ride-actions" class="tracking-actions" style="display:none;">
-            <button class="track-btn danger" onclick="app.cancelRide()">✕ Cancel Ride</button>
+            <button id="end-ride-btn" class="track-btn primary" onclick="app.endRide()">✓ End Ride</button>
+            <button id="cancel-ride-btn" class="track-btn danger" onclick="app.cancelRide()">✕ Cancel Ride</button>
           </div>
         </div>
 
@@ -659,6 +661,16 @@
 
         <!-- Passenger-only section: Payment Methods + Ride History shortcut -->
         <div id="profile-passenger-section" style="display:none">
+          <div class="profile-docs-card" id="profile-passenger-lost-items-card" style="display:none;margin-bottom:20px;">
+            <div class="profile-docs-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              Lost Item Reports
+            </div>
+            <div id="profile-passenger-lost-items-list">
+              <p style="color:var(--text-dim);font-size:14px;margin:0;">No reports yet.</p>
+            </div>
+          </div>
+
           <div class="profile-docs-card" style="margin-bottom:20px;">
             <div class="profile-docs-title">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
