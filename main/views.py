@@ -14,7 +14,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 
-from .models import User, Province, Route, Transport, DriverProfile, PassengerProfile, Ride, Rating, DriverDocument, ChatMessage, Location
+from .models import User, Province, Route, Transport, DriverProfile, PassengerProfile, Ride, Rating, DriverDocument, ChatMessage, Location, LostItemReport
 from .serializers import (
     ProvinceSerializer,
     RouteSerializer,
@@ -26,6 +26,7 @@ from .serializers import (
     DriverDocumentSerializer,
     ChatMessageSerializer,
     LocationSerializer,
+    LostItemReportSerializer,
 )
 from .auth_serializers import (
     RegisterPassengerSerializer,
@@ -253,6 +254,17 @@ class DriverViewSet(viewsets.GenericViewSet,
             status__in=[Ride.Status.PENDING, Ride.Status.CONFIRMED, Ride.Status.IN_PROGRESS],
         ).order_by('departure_time')
         return Response(RideSerializer(rides, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='lost-item-reports')
+    def lost_item_reports(self, request):
+        reports = LostItemReport.objects.filter(
+            driver=request.user,
+            driver_response=LostItemReport.DriverResponse.PENDING,
+            status=LostItemReport.Status.OPEN,
+        ).select_related('ride', 'passenger', 'driver')
+        return Response(
+            LostItemReportSerializer(reports, many=True, context={'request': request}).data
+        )
 
 
 class PassengerViewSet(viewsets.GenericViewSet):
@@ -723,6 +735,108 @@ class LocationViewSet(viewsets.GenericViewSet,
             return Response(LocationSerializer(location).data)
         except Location.DoesNotExist:
             return Response({'detail': 'No location updates available.'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class LostItemReportViewSet(viewsets.GenericViewSet):
+    serializer_class = LostItemReportSerializer
+
+    def get_permissions(self):
+        if self.action == 'create':
+            return [IsAuthenticated(), IsPassenger()]
+        if self.action == 'respond':
+            return [IsAuthenticated(), IsDriver()]
+        return [IsAuthenticated(), IsRideParticipantByURL()]
+
+    def _get_ride(self, ride_pk):
+        try:
+            return Ride.objects.get(pk=ride_pk)
+        except Ride.DoesNotExist:
+            return None
+
+    @extend_schema(
+        request=LostItemReportSerializer,
+        responses=LostItemReportSerializer,
+        description='Report a lost item for a completed ride',
+    )
+    def create(self, request, ride_pk=None):
+        ride = self._get_ride(ride_pk)
+        if not ride:
+            return Response({'detail': 'Ride not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if ride.passenger != request.user:
+            return Response({'detail': 'You can only report lost items for your own rides.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if ride.status != Ride.Status.COMPLETED:
+            return Response({'detail': 'You can only report lost items for completed rides.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if hasattr(ride, 'lost_item_report'):
+            return Response({'detail': 'A lost item report already exists for this ride.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        s = LostItemReportSerializer(data=request.data, context={'request': request})
+        s.is_valid(raise_exception=True)
+        report = s.save(ride=ride, passenger=request.user, driver=ride.driver)
+
+        return Response(
+            LostItemReportSerializer(report, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(
+        responses=LostItemReportSerializer,
+        description='Get the lost item report for this ride',
+    )
+    def retrieve(self, request, ride_pk=None):
+        ride = self._get_ride(ride_pk)
+        if not ride:
+            return Response({'detail': 'Ride not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user != ride.driver and request.user != ride.passenger:
+            return Response({'detail': 'You do not have permission to view this report.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if not hasattr(ride, 'lost_item_report'):
+            return Response({'detail': 'No lost item report exists for this ride.'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(
+            LostItemReportSerializer(ride.lost_item_report, context={'request': request}).data
+        )
+
+    @extend_schema(
+        request=serializers.Serializer,
+        responses=LostItemReportSerializer,
+        description='Driver responds whether the lost item was found',
+    )
+    def respond(self, request, ride_pk=None):
+        ride = self._get_ride(ride_pk)
+        if not ride:
+            return Response({'detail': 'Ride not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if ride.driver != request.user:
+            return Response({'detail': 'Only the driver can respond to lost item reports.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if not hasattr(ride, 'lost_item_report'):
+            return Response({'detail': 'No lost item report exists for this ride.'}, status=status.HTTP_404_NOT_FOUND)
+
+        report = ride.lost_item_report
+        if report.driver_response != LostItemReport.DriverResponse.PENDING:
+            return Response({'detail': 'You have already responded to this report.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        response_value = request.data.get('driver_response')
+        if response_value not in (LostItemReport.DriverResponse.YES, LostItemReport.DriverResponse.NO):
+            return Response(
+                {'detail': 'driver_response must be "yes" or "no".'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        report.driver_response = response_value
+        report.status = (
+            LostItemReport.Status.FOUND if response_value == LostItemReport.DriverResponse.YES
+            else LostItemReport.Status.NOT_FOUND
+        )
+        report.save(update_fields=['driver_response', 'status', 'updated_at'])
+
+        return Response(
+            LostItemReportSerializer(report, context={'request': request}).data
+        )
 
 
 # Frontend serving view

@@ -10,6 +10,8 @@ const app = {
   trackingMap: null,
   driverMarker: null,
   locationPollTimer: null,
+  lostItemPollTimer: null,
+  _seenLostItemIds: new Set(),
 
   // --------------------------------------------------
   // INIT
@@ -62,6 +64,7 @@ const app = {
     };
     this._resetBooking();
     this.showView('home');
+    this._startLostItemPolling();
   },
 
   // --------------------------------------------------
@@ -670,7 +673,19 @@ const app = {
 
     const statusColor = s => ({ completed:'var(--green)', cancelled:'var(--red)' }[s] || 'var(--text-dim)');
 
-    container.innerHTML = rides.map(r => `
+    container.innerHTML = rides.map(r => {
+      const isCompleted = r.status === 'completed';
+      const hasReport = !!r.lost_item_report_status;
+      let actionBtn = '';
+      if (isCompleted && !hasReport) {
+        actionBtn = `<button class="btn-ghost btn-sm history-action" onclick="app.openLostItemModal(${r.id})">Report Lost Item</button>`;
+      } else if (hasReport) {
+        const label = r.lost_item_report_status === 'found' ? 'Item found'
+          : r.lost_item_report_status === 'not_found' ? 'Not found'
+          : 'Report submitted';
+        actionBtn = `<span class="history-report-status">${label}</span>`;
+      }
+      return `
       <div class="history-card">
         <div class="history-date">
           <div class="day">${new Date(r.departure_time).getDate()}</div>
@@ -685,6 +700,120 @@ const app = {
           <div class="ride-time" style="color:${statusColor(r.status)}">${r.status.replace('_',' ')}</div>
         </div>
         <div class="history-price">$${r.price}</div>
+        ${actionBtn ? `<div class="history-actions">${actionBtn}</div>` : ''}
+      </div>
+    `;
+    }).join('');
+  },
+
+  openLostItemModal(rideId) {
+    document.getElementById('lost-item-ride-id').value = rideId;
+    document.getElementById('lost-item-description').value = '';
+    document.getElementById('lost-item-share-contact').checked = false;
+    const err = document.getElementById('lost-item-error');
+    err.style.display = 'none';
+    err.textContent = '';
+    document.getElementById('lost-item-modal').style.display = 'flex';
+  },
+
+  closeLostItemModal() {
+    document.getElementById('lost-item-modal').style.display = 'none';
+  },
+
+  async submitLostItemReport(e) {
+    e.preventDefault();
+    const rideId = document.getElementById('lost-item-ride-id').value;
+    const item_description = document.getElementById('lost-item-description').value.trim();
+    const share_contact = document.getElementById('lost-item-share-contact').checked;
+    const errEl = document.getElementById('lost-item-error');
+
+    if (!item_description) {
+      errEl.textContent = 'Please describe the lost item.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    this.loading(true);
+    const res = await this.api('/rides/' + rideId + '/lost-item/', 'POST', {
+      item_description,
+      share_contact,
+    });
+    this.loading(false);
+
+    if (res) {
+      this.closeLostItemModal();
+      this.toast('Lost item report submitted. Your driver has been notified.', 'success');
+      this.loadRideHistory();
+    } else {
+      errEl.textContent = 'Could not submit report. It may already exist for this ride.';
+      errEl.style.display = 'block';
+    }
+  },
+
+  _startLostItemPolling() {
+    if (this.lostItemPollTimer) clearInterval(this.lostItemPollTimer);
+    if (localStorage.getItem('role') !== 'DRIVER') return;
+
+    const poll = () => this.checkDriverLostItemReports();
+    poll();
+    this.lostItemPollTimer = setInterval(poll, 30000);
+  },
+
+  async checkDriverLostItemReports() {
+    if (localStorage.getItem('role') !== 'DRIVER') return;
+    const reports = await this.api('/drivers/lost-item-reports/');
+    if (!reports || !reports.length) return;
+
+    reports.forEach(report => {
+      if (this._seenLostItemIds.has(report.id)) return;
+      this._seenLostItemIds.add(report.id);
+      this.toast(report.notification_message, 'info');
+    });
+
+    if (document.getElementById('view-profile').classList.contains('active')) {
+      this._renderDriverLostItems(reports);
+    }
+  },
+
+  async respondToLostItem(rideId, response) {
+    this.loading(true);
+    const res = await this.api('/rides/' + rideId + '/lost-item/respond/', 'PATCH', {
+      driver_response: response,
+    });
+    this.loading(false);
+
+    if (res) {
+      const msg = response === 'yes'
+        ? 'Thanks! The passenger will be notified that you found the item.'
+        : 'Response recorded. The passenger has been notified.';
+      this.toast(msg, 'success');
+      const reports = await this.api('/drivers/lost-item-reports/');
+      this._renderDriverLostItems(reports || []);
+    } else {
+      this.toast('Could not submit your response.', 'error');
+    }
+  },
+
+  _renderDriverLostItems(reports) {
+    const card = document.getElementById('profile-lost-items-card');
+    const list = document.getElementById('profile-lost-items-list');
+    if (!card || !list) return;
+
+    if (!reports.length) {
+      card.style.display = localStorage.getItem('role') === 'DRIVER' ? 'block' : 'none';
+      list.innerHTML = '<p style="color:var(--text-dim);font-size:14px;margin:0;">No pending reports.</p>';
+      return;
+    }
+
+    card.style.display = 'block';
+    list.innerHTML = reports.map(r => `
+      <div class="lost-item-alert">
+        <p class="lost-item-message">${r.notification_message}</p>
+        ${r.share_contact && r.passenger_contact ? `<p class="lost-item-contact">Passenger contact: ${r.passenger_contact}</p>` : ''}
+        <div class="lost-item-actions">
+          <button class="btn-primary btn-sm" onclick="app.respondToLostItem(${r.ride}, 'yes')">Yes, I have it</button>
+          <button class="btn-ghost btn-sm" onclick="app.respondToLostItem(${r.ride}, 'no')">No, I couldn't find it</button>
+        </div>
       </div>
     `).join('');
   },
@@ -711,6 +840,7 @@ const app = {
     document.getElementById('profile-rating-pill').style.display      = 'none';
     document.getElementById('profile-vehicle-card').style.display     = 'none';
     document.getElementById('profile-docs-card').style.display        = 'none';
+    document.getElementById('profile-lost-items-card').style.display  = 'none';
 
     document.getElementById('profile-online-bar').classList.remove('active');
     document.getElementById('profile-identity-card').classList.remove('profile-identity-card--online');
@@ -768,6 +898,9 @@ const app = {
           const docsArray = Array.isArray(docsRes) ? docsRes : (docsRes.results || []);
           this._renderDocuments(docsArray);
         }
+
+        const lostItemsRes = await this.api('/drivers/lost-item-reports/');
+        if (lostItemsRes) this._renderDriverLostItems(lostItemsRes);
 
       } else {
         // ── Passenger layout ────────────────────────────────────────────────

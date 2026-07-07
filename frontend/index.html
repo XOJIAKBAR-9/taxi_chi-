@@ -644,6 +644,17 @@
           </div>
         </div>
 
+        <!-- 5. Lost Item Alerts — drivers only -->
+        <div class="profile-docs-card" id="profile-lost-items-card" style="display:none">
+          <div class="profile-docs-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Lost Item Reports
+          </div>
+          <div id="profile-lost-items-list">
+            <p style="color:var(--text-dim);font-size:14px;margin:0;">No pending reports.</p>
+          </div>
+        </div>
+
 
 
         <!-- Passenger-only section: Payment Methods + Ride History shortcut -->
@@ -748,6 +759,31 @@
   </footer>
 
   </div><!-- end app-views -->
+
+  <!-- Lost Item Report Modal -->
+  <div class="modal-overlay" id="lost-item-modal" style="display:none">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Report Lost Item</h3>
+        <button class="modal-close" onclick="app.closeLostItemModal()" aria-label="Close">&times;</button>
+      </div>
+      <p class="modal-subtitle">Describe what you left behind so your driver can look for it.</p>
+      <form id="lost-item-form" onsubmit="app.submitLostItemReport(event)">
+        <input type="hidden" id="lost-item-ride-id" value="">
+        <label class="form-label" for="lost-item-description">Item description</label>
+        <input type="text" id="lost-item-description" class="form-input" placeholder="e.g. Black backpack, iPhone 13" required maxlength="255">
+        <label class="form-check">
+          <input type="checkbox" id="lost-item-share-contact">
+          <span>Share my contact number with the driver</span>
+        </label>
+        <div id="lost-item-error" class="form-error" style="display:none"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" onclick="app.closeLostItemModal()">Cancel</button>
+          <button type="submit" class="btn-primary">Submit Report</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <script src="app.js"></script>

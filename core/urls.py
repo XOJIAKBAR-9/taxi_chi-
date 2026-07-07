@@ -21,6 +21,7 @@ from main.views import (
     DriverDocumentViewSet,
     ChatMessageViewSet,
     LocationViewSet,
+    LostItemReportViewSet,
 )
 
 router = DefaultRouter()
@@ -42,6 +43,8 @@ urlpatterns = [
     path('api/rides/<int:ride_pk>/messages/unread-count/', ChatMessageViewSet.as_view({'get': 'unread_count'}), name='message-unread-count'),
     path('api/rides/<int:ride_pk>/locations/', LocationViewSet.as_view({'get': 'list', 'post': 'create'}), name='ride-locations'),
     path('api/rides/<int:ride_pk>/locations/latest/', LocationViewSet.as_view({'get': 'latest'}), name='location-latest'),
+    path('api/rides/<int:ride_pk>/lost-item/', LostItemReportViewSet.as_view({'get': 'retrieve', 'post': 'create'}), name='ride-lost-item'),
+    path('api/rides/<int:ride_pk>/lost-item/respond/', LostItemReportViewSet.as_view({'patch': 'respond'}), name='ride-lost-item-respond'),
     path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),

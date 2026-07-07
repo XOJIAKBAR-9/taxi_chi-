@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils import timezone
-from .models import User, Province, Route, Transport, DriverProfile, PassengerProfile, Ride, Rating, DriverDocument
+from .models import User, Province, Route, Transport, DriverProfile, PassengerProfile, Ride, Rating, DriverDocument, LostItemReport
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
@@ -42,6 +42,14 @@ class DriverDocumentAdmin(admin.ModelAdmin):
                 profile = doc.driver.driver_profile
                 profile.is_verified = True
                 profile.save()
+
+
+@admin.register(LostItemReport)
+class LostItemReportAdmin(admin.ModelAdmin):
+    list_display = ('ride', 'passenger', 'driver', 'item_description', 'status', 'driver_response', 'created_at')
+    list_filter = ('status', 'driver_response', 'share_contact')
+    search_fields = ('item_description', 'passenger__username', 'driver__username')
+    readonly_fields = ('created_at', 'updated_at')
 
 admin.site.register(Province)
 admin.site.register(Route)

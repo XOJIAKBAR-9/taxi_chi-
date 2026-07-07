@@ -189,3 +189,33 @@ class Location(models.Model):
 
     def __str__(self):
         return f"{self.driver.username} - ({self.latitude}, {self.longitude}) at {self.timestamp}"
+
+
+class LostItemReport(models.Model):
+    class Status(models.TextChoices):
+        OPEN = 'open', 'Open'
+        FOUND = 'found', 'Item Found'
+        NOT_FOUND = 'not_found', 'Item Not Found'
+
+    class DriverResponse(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        YES = 'yes', 'Yes, I have it'
+        NO = 'no', 'No, I could not find it'
+
+    ride = models.OneToOneField(Ride, on_delete=models.CASCADE, related_name='lost_item_report')
+    passenger = models.ForeignKey(User, on_delete=models.CASCADE, related_name='lost_item_reports_filed')
+    driver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='lost_item_reports_received')
+    item_description = models.CharField(max_length=255)
+    share_contact = models.BooleanField(default=False)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
+    driver_response = models.CharField(
+        max_length=20, choices=DriverResponse.choices, default=DriverResponse.PENDING
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Lost item on ride {self.ride_id}: {self.item_description}"

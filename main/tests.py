@@ -3,7 +3,7 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 from rest_framework import status
 
-from .models import User, Province, Route, Transport, DriverProfile, PassengerProfile, Ride, Rating
+from .models import User, Province, Route, Transport, DriverProfile, PassengerProfile, Ride, Rating, LostItemReport
 
 class TaxiChiTests(APITestCase):
     def setUp(self):
@@ -194,3 +194,56 @@ class TaxiChiTests(APITestCase):
         )
         res_not_completed = self.client.post(f"/api/rides/{ride2.id}/rating/", {'stars': 5})
         self.assertEqual(res_not_completed.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def _create_completed_ride(self):
+        return Ride.objects.create(
+            driver=self.driver_user, passenger=self.passenger_user, route=self.route,
+            from_province='tashkent_city', to_province='samarkand', seat=Ride.SEAT.BACK,
+            departure_time=timezone.now(), price=100.0, payment_method=Ride.PaymentMethod.CASH,
+            status=Ride.Status.COMPLETED, payment_status=Ride.PaymentStatus.PAID
+        )
+
+    def test_lost_item_report_flow(self):
+        ride = self._create_completed_ride()
+        url = f"/api/rides/{ride.id}/lost-item/"
+
+        self.client.force_authenticate(user=self.passenger_user)
+        res = self.client.post(url, {
+            'item_description': 'Black backpack',
+            'share_contact': True,
+        })
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(LostItemReport.objects.count(), 1)
+        self.assertIn('Black backpack', res.data['notification_message'])
+        self.assertEqual(res.data['status'], LostItemReport.Status.OPEN)
+
+        res_dup = self.client.post(url, {'item_description': 'Phone'})
+        self.assertEqual(res_dup.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.client.force_authenticate(user=self.driver_user)
+        pending = self.client.get('/api/drivers/lost-item-reports/')
+        self.assertEqual(pending.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(pending.data), 1)
+        self.assertEqual(pending.data[0]['passenger_contact'], self.passenger_user.phone)
+
+        res_yes = self.client.patch(f"{url}respond/", {'driver_response': 'yes'})
+        self.assertEqual(res_yes.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_yes.data['status'], LostItemReport.Status.FOUND)
+        self.assertEqual(res_yes.data['driver_response'], LostItemReport.DriverResponse.YES)
+
+        pending_after = self.client.get('/api/drivers/lost-item-reports/')
+        self.assertEqual(len(pending_after.data), 0)
+
+    def test_lost_item_report_requires_completed_ride(self):
+        ride = Ride.objects.create(
+            driver=self.driver_user, passenger=self.passenger_user, route=self.route,
+            from_province='tashkent_city', to_province='samarkand', seat=Ride.SEAT.FRONT,
+            departure_time=timezone.now(), price=100.0, payment_method=Ride.PaymentMethod.CASH,
+            status=Ride.Status.IN_PROGRESS, payment_status=Ride.PaymentStatus.UNPAID
+        )
+        self.client.force_authenticate(user=self.passenger_user)
+        res = self.client.post(f"/api/rides/{ride.id}/lost-item/", {
+            'item_description': 'Wallet',
+            'share_contact': False,
+        })
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
