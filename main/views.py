@@ -298,6 +298,15 @@ class PassengerViewSet(viewsets.GenericViewSet):
                            ).aggregate(total=Sum('price'))['total'] or 0,
         })
 
+    @action(detail=False, methods=['get'], url_path='lost-item-reports')
+    def lost_item_reports(self, request):
+        reports = LostItemReport.objects.filter(
+            passenger=request.user,
+        ).select_related('ride', 'passenger', 'driver')
+        return Response(
+            LostItemReportSerializer(reports, many=True, context={'request': request}).data
+        )
+
 
 class RideViewSet(viewsets.GenericViewSet,
                   mixins.ListModelMixin,
@@ -322,6 +331,8 @@ class RideViewSet(viewsets.GenericViewSet,
             return [IsAuthenticated(), IsDriver()]
         if self.action == 'cancel':
             return [IsAuthenticated(), IsPassenger()]
+        if self.action == 'end':
+            return [IsAuthenticated()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
@@ -446,6 +457,40 @@ class RideViewSet(viewsets.GenericViewSet,
 
         ride.status = Ride.Status.CANCELLED
         ride.save(update_fields=['status', 'updated_at'])
+        return Response(RideSerializer(ride).data)
+
+    @extend_schema(
+        responses=RideSerializer,
+        description='Mark an active ride as completed. Available to the driver or passenger.',
+    )
+    @action(detail=True, methods=['post'], url_path='end')
+    def end(self, request, pk=None):
+        try:
+            ride = Ride.objects.get(pk=pk)
+        except Ride.DoesNotExist:
+            return Response({'detail': 'Ride not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user != ride.driver and request.user != ride.passenger:
+            return Response(
+                {'detail': 'You are not a participant of this ride.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if ride.status not in [
+            Ride.Status.PENDING,
+            Ride.Status.CONFIRMED,
+            Ride.Status.IN_PROGRESS,
+        ]:
+            return Response(
+                {'detail': f"Cannot end a ride with status '{ride.status}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ride.status = Ride.Status.COMPLETED
+        ride.save(update_fields=['status', 'updated_at'])
+        DriverProfile.objects.filter(driver=ride.driver).update(total_trips=F('total_trips') + 1)
+        PassengerProfile.objects.filter(passenger=ride.passenger).update(total_trips=F('total_trips') + 1)
+
         return Response(RideSerializer(ride).data)
 
     @action(detail=True, methods=['patch'])
@@ -745,6 +790,8 @@ class LostItemReportViewSet(viewsets.GenericViewSet):
             return [IsAuthenticated(), IsPassenger()]
         if self.action == 'respond':
             return [IsAuthenticated(), IsDriver()]
+        if self.action == 'retrieve':
+            return [IsAuthenticated(), IsRideParticipantByURL()]
         return [IsAuthenticated(), IsRideParticipantByURL()]
 
     def _get_ride(self, ride_pk):
@@ -764,7 +811,10 @@ class LostItemReportViewSet(viewsets.GenericViewSet):
             return Response({'detail': 'Ride not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         if ride.passenger != request.user:
-            return Response({'detail': 'You can only report lost items for your own rides.'}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'detail': 'Only passengers can report lost items.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if request.user.role != User.ROLE.PASSENGER:
+            return Response({'detail': 'Only passengers can report lost items.'}, status=status.HTTP_403_FORBIDDEN)
 
         if ride.status != Ride.Status.COMPLETED:
             return Response({'detail': 'You can only report lost items for completed rides.'}, status=status.HTTP_400_BAD_REQUEST)

@@ -1,6 +1,11 @@
 from rest_framework import serializers
 from .models import Province, Route, Transport, DriverProfile, PassengerProfile, Ride, Rating, DriverDocument, ChatMessage, Location, LostItemReport, ProvinceChoices
-from .notifications import build_lost_item_notification
+from .notifications import (
+    build_driver_lost_item_notification,
+    build_passenger_report_submitted_message,
+    build_passenger_found_message,
+    build_passenger_not_found_message,
+)
 
 class ProvinceSerializer(serializers.ModelSerializer):
     class Meta:
@@ -98,6 +103,7 @@ class PassengerProfileSerializer(serializers.ModelSerializer):
 
 class RideSerializer(serializers.ModelSerializer):
     passenger      = serializers.CharField(source='passenger.username', read_only=True)
+    driver_name    = serializers.CharField(source='driver.username', read_only=True)
     from_province  = serializers.ChoiceField(choices=ProvinceChoices.choices)
     to_province    = serializers.ChoiceField(choices=ProvinceChoices.choices)
     lost_item_report_status = serializers.SerializerMethodField()
@@ -105,11 +111,11 @@ class RideSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ride
         fields = [
-            'id', 'driver', 'passenger', 'route', 'from_province', 'to_province', 
+            'id', 'driver', 'driver_name', 'passenger', 'route', 'from_province', 'to_province', 
             'seat', 'departure_time', 'price', 'payment_method', 'payment_status', 
             'status', 'lost_item_report_status', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['payment_status', 'status', 'created_at', 'updated_at', 'lost_item_report_status']
+        read_only_fields = ['payment_status', 'status', 'created_at', 'updated_at', 'lost_item_report_status', 'driver_name']
 
     def get_lost_item_report_status(self, obj):
         report = getattr(obj, 'lost_item_report', None)
@@ -169,18 +175,21 @@ class LostItemReportSerializer(serializers.ModelSerializer):
     passenger_contact = serializers.SerializerMethodField()
     vehicle_model = serializers.SerializerMethodField()
     notification_message = serializers.SerializerMethodField()
+    passenger_notification_message = serializers.SerializerMethodField()
 
     class Meta:
         model = LostItemReport
         fields = [
             'id', 'ride', 'passenger', 'driver', 'item_description', 'share_contact',
             'status', 'driver_response', 'passenger_contact', 'vehicle_model',
-            'notification_message', 'created_at', 'updated_at',
+            'notification_message', 'passenger_notification_message',
+            'created_at', 'updated_at',
         ]
         read_only_fields = [
             'ride', 'passenger', 'driver',
             'status', 'driver_response', 'passenger_contact', 'vehicle_model',
-            'notification_message', 'created_at', 'updated_at',
+            'notification_message', 'passenger_notification_message',
+            'created_at', 'updated_at',
         ]
 
     def get_vehicle_model(self, obj):
@@ -190,7 +199,16 @@ class LostItemReportSerializer(serializers.ModelSerializer):
             return 'vehicle'
 
     def get_notification_message(self, obj):
-        return build_lost_item_notification(obj.item_description, self.get_vehicle_model(obj))
+        return build_driver_lost_item_notification(obj.item_description, self.get_vehicle_model(obj))
+
+    def get_passenger_notification_message(self, obj):
+        if obj.driver_response == LostItemReport.DriverResponse.PENDING:
+            return build_passenger_report_submitted_message(obj.item_description)
+        if obj.driver_response == LostItemReport.DriverResponse.YES:
+            return build_passenger_found_message(obj.item_description, obj.driver.username)
+        if obj.driver_response == LostItemReport.DriverResponse.NO:
+            return build_passenger_not_found_message(obj.item_description, obj.driver.username)
+        return None
 
     def get_passenger_contact(self, obj):
         request = self.context.get('request')
