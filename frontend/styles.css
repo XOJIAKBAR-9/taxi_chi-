@@ -1121,6 +1121,46 @@ hr {
   flex-wrap: wrap;
 }
 
+/* Star rating */
+.star-rating {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+.star-btn {
+  background: none;
+  border: none;
+  font-size: 36px;
+  line-height: 1;
+  color: var(--border);
+  cursor: pointer;
+  transition: color 0.15s ease, transform 0.15s ease;
+  padding: 4px;
+}
+.star-btn:hover,
+.star-btn.active {
+  color: var(--accent);
+  transform: scale(1.08);
+}
+.rating-hint {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0 0 16px;
+}
+.history-rating {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.history-actions-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 /* === PROFILE VIEW === */
 .profile-view {
   min-height: 100vh; padding: 120px 0 80px;

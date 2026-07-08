@@ -14,6 +14,7 @@ const app = {
   lostItemPollTimer: null,
   _seenDriverLostItemIds: new Set(),
   _seenPassengerLostItemKeys: new Set(),
+  _ratingSelected: 0,
 
   // --------------------------------------------------
   // INIT
@@ -716,7 +717,12 @@ const app = {
       if (res !== null) {
         this._clearRideState();
         this.renderNoRide();
-        this.toast('Ride completed! Check History to report a lost item.', 'success');
+        const isPassenger = localStorage.getItem('role') === 'PASSENGER';
+        if (isPassenger) {
+          this.openRatingModal(res.id, res.driver_name);
+        } else {
+          this.toast('Ride completed!', 'success');
+        }
         return;
       }
       this.toast('Could not end ride. Please try again.', 'error');
@@ -749,15 +755,28 @@ const app = {
     container.innerHTML = rides.map(r => {
       const isCompleted = r.status === 'completed';
       const hasReport = !!r.lost_item_report_status;
-      let actionBtn = '';
-      if (isPassenger && isCompleted && !hasReport) {
-        actionBtn = `<button class="btn-ghost btn-sm history-action" onclick="app.openLostItemModal(${r.id})">Report Lost Item</button>`;
-      } else if (hasReport) {
-        const label = r.lost_item_report_status === 'found' ? 'Item found'
-          : r.lost_item_report_status === 'not_found' ? 'Not found'
-          : 'Report submitted';
-        actionBtn = `<span class="history-report-status">${label}</span>`;
+      const hasRating = !!r.rating_stars;
+      const actions = [];
+
+      if (isPassenger && isCompleted) {
+        if (!hasRating) {
+          actions.push(`<button class="btn-primary btn-sm history-action" onclick="app.openRatingModal(${r.id}, ${JSON.stringify(r.driver_name || 'Driver')})">Rate Driver</button>`);
+        } else {
+          actions.push(`<span class="history-rating">★ ${r.rating_stars}/5</span>`);
+        }
+        if (!hasReport) {
+          actions.push(`<button class="btn-ghost btn-sm history-action" onclick="app.openLostItemModal(${r.id})">Report Lost Item</button>`);
+        } else {
+          const label = r.lost_item_report_status === 'found' ? 'Item found'
+            : r.lost_item_report_status === 'not_found' ? 'Not found'
+            : 'Report submitted';
+          actions.push(`<span class="history-report-status">${label}</span>`);
+        }
       }
+
+      const actionBtn = actions.length
+        ? `<div class="history-actions"><div class="history-actions-row">${actions.join('')}</div></div>`
+        : '';
       return `
       <div class="history-card">
         <div class="history-date">
@@ -773,10 +792,77 @@ const app = {
           <div class="ride-time" style="color:${statusColor(r.status)}">${r.status.replace('_',' ')}</div>
         </div>
         <div class="history-price">$${r.price}</div>
-        ${actionBtn ? `<div class="history-actions">${actionBtn}</div>` : ''}
+        ${actionBtn}
       </div>
     `;
     }).join('');
+  },
+
+  openRatingModal(rideId, driverName = 'your driver') {
+    if (localStorage.getItem('role') !== 'PASSENGER') {
+      this.toast('Only passengers can rate drivers.', 'error');
+      return;
+    }
+    document.getElementById('rating-ride-id').value = rideId;
+    document.getElementById('rating-driver-label').textContent =
+      `How was your ride with ${driverName}?`;
+    document.getElementById('rating-comment').value = '';
+    const err = document.getElementById('rating-error');
+    err.style.display = 'none';
+    err.textContent = '';
+    this._ratingSelected = 0;
+    this._updateStarDisplay();
+    document.getElementById('rating-modal').style.display = 'flex';
+  },
+
+  closeRatingModal() {
+    document.getElementById('rating-modal').style.display = 'none';
+  },
+
+  setRating(stars) {
+    this._ratingSelected = stars;
+    this._updateStarDisplay();
+  },
+
+  _updateStarDisplay() {
+    const hints = ['Tap a star to rate', 'Poor', 'Fair', 'Good', 'Very good', 'Excellent'];
+    document.querySelectorAll('#star-rating .star-btn').forEach(btn => {
+      const star = parseInt(btn.dataset.star, 10);
+      btn.classList.toggle('active', star <= this._ratingSelected);
+    });
+    const hint = document.getElementById('rating-hint');
+    if (hint) hint.textContent = hints[this._ratingSelected] || hints[0];
+  },
+
+  async submitRating(e) {
+    e.preventDefault();
+    const rideId = document.getElementById('rating-ride-id').value;
+    const comment = document.getElementById('rating-comment').value.trim();
+    const errEl = document.getElementById('rating-error');
+
+    if (!this._ratingSelected) {
+      errEl.textContent = 'Please select a star rating.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    this.loading(true);
+    const res = await this.api('/rides/' + rideId + '/rating/', 'POST', {
+      stars: this._ratingSelected,
+      comment,
+    });
+    this.loading(false);
+
+    if (res) {
+      this.closeRatingModal();
+      this.toast(`Thanks! You rated your driver ${this._ratingSelected}★.`, 'success');
+      if (document.getElementById('view-history').classList.contains('active')) {
+        this.loadRideHistory();
+      }
+    } else {
+      errEl.textContent = 'Could not submit rating. Please try again.';
+      errEl.style.display = 'block';
+    }
   },
 
   openLostItemModal(rideId) {

@@ -165,12 +165,7 @@ class TaxiChiTests(APITestCase):
         self.assertEqual(res.data['status'], Ride.Status.CANCELLED)
 
     def test_rating_creation_and_blocking(self):
-        ride = Ride.objects.create(
-            driver=self.driver_user, passenger=self.passenger_user, route=self.route,
-            from_province=self.province1, to_province=self.province2, seat=Ride.SEAT.BACK,
-            departure_time=timezone.now(), price=100.0, payment_method=Ride.PaymentMethod.CASH,
-            status=Ride.Status.COMPLETED, payment_status=Ride.PaymentStatus.PAID
-        )
+        ride = self._create_completed_ride()
         self.client.force_authenticate(user=self.passenger_user)
         
         url = f"/api/rides/{ride.id}/rating/"
@@ -184,16 +179,34 @@ class TaxiChiTests(APITestCase):
         res_dup = self.client.post(url, {'stars': 4})
         self.assertEqual(res_dup.status_code, status.HTTP_400_BAD_REQUEST)
         
-        ride.status = Ride.Status.IN_PROGRESS
-        ride.save()
         ride2 = Ride.objects.create(
             driver=self.driver_user, passenger=self.passenger_user, route=self.route,
-            from_province=self.province1, to_province=self.province2, seat=Ride.SEAT.FRONT,
+            from_province='tashkent_city', to_province='samarkand', seat=Ride.SEAT.FRONT,
             departure_time=timezone.now(), price=100.0, payment_method=Ride.PaymentMethod.CASH,
             status=Ride.Status.IN_PROGRESS, payment_status=Ride.PaymentStatus.UNPAID
         )
         res_not_completed = self.client.post(f"/api/rides/{ride2.id}/rating/", {'stars': 5})
         self.assertEqual(res_not_completed.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_passenger_can_rate_same_driver_on_multiple_rides(self):
+        ride1 = self._create_completed_ride()
+        ride2 = Ride.objects.create(
+            driver=self.driver_user, passenger=self.passenger_user, route=self.route,
+            from_province='tashkent_city', to_province='samarkand', seat=Ride.SEAT.FRONT,
+            departure_time=timezone.now(), price=120.0, payment_method=Ride.PaymentMethod.CASH,
+            status=Ride.Status.COMPLETED, payment_status=Ride.PaymentStatus.PAID
+        )
+        self.client.force_authenticate(user=self.passenger_user)
+
+        res1 = self.client.post(f"/api/rides/{ride1.id}/rating/", {'stars': 5, 'comment': 'First trip'})
+        res2 = self.client.post(f"/api/rides/{ride2.id}/rating/", {'stars': 3, 'comment': 'Second trip'})
+
+        self.assertEqual(res1.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res2.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Rating.objects.filter(passenger=self.passenger_user, driver=self.driver_user).count(), 2)
+
+        self.driver_profile.refresh_from_db()
+        self.assertEqual(self.driver_profile.avg_rating, 4.0)
 
     def _create_completed_ride(self):
         return Ride.objects.create(

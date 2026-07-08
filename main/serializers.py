@@ -107,19 +107,24 @@ class RideSerializer(serializers.ModelSerializer):
     from_province  = serializers.ChoiceField(choices=ProvinceChoices.choices)
     to_province    = serializers.ChoiceField(choices=ProvinceChoices.choices)
     lost_item_report_status = serializers.SerializerMethodField()
+    rating_stars = serializers.SerializerMethodField()
 
     class Meta:
         model = Ride
         fields = [
             'id', 'driver', 'driver_name', 'passenger', 'route', 'from_province', 'to_province', 
             'seat', 'departure_time', 'price', 'payment_method', 'payment_status', 
-            'status', 'lost_item_report_status', 'created_at', 'updated_at'
+            'status', 'lost_item_report_status', 'rating_stars', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['payment_status', 'status', 'created_at', 'updated_at', 'lost_item_report_status', 'driver_name']
+        read_only_fields = ['payment_status', 'status', 'created_at', 'updated_at', 'lost_item_report_status', 'driver_name', 'rating_stars']
 
     def get_lost_item_report_status(self, obj):
         report = getattr(obj, 'lost_item_report', None)
         return report.status if report else None
+
+    def get_rating_stars(self, obj):
+        rating = getattr(obj, 'rating', None)
+        return rating.stars if rating else None
 
     def validate(self, data):
         request = self.context.get('request')
@@ -138,7 +143,7 @@ class RatingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Rating
         fields = ['id', 'ride', 'passenger', 'driver', 'stars', 'comment', 'created_at']
-        read_only_fields = ['created_at']
+        read_only_fields = ['ride', 'passenger', 'driver', 'created_at']
 
 class DriverDocumentSerializer(serializers.ModelSerializer):
     driver = serializers.CharField(source='driver.username', read_only=True)

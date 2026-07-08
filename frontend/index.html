@@ -772,6 +772,36 @@
 
   </div><!-- end app-views -->
 
+  <!-- Rating Modal -->
+  <div class="modal-overlay" id="rating-modal" style="display:none">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Rate Your Driver</h3>
+        <button class="modal-close" onclick="app.closeRatingModal()" aria-label="Close">&times;</button>
+      </div>
+      <p class="modal-subtitle" id="rating-driver-label">How was your ride?</p>
+      <p class="modal-subtitle" style="margin-top:-12px;font-size:13px;">Your rating helps keep rides safe and trustworthy for everyone.</p>
+      <form id="rating-form" onsubmit="app.submitRating(event)">
+        <input type="hidden" id="rating-ride-id" value="">
+        <div class="star-rating" id="star-rating" role="group" aria-label="Star rating">
+          <button type="button" class="star-btn" data-star="1" onclick="app.setRating(1)" aria-label="1 star">★</button>
+          <button type="button" class="star-btn" data-star="2" onclick="app.setRating(2)" aria-label="2 stars">★</button>
+          <button type="button" class="star-btn" data-star="3" onclick="app.setRating(3)" aria-label="3 stars">★</button>
+          <button type="button" class="star-btn" data-star="4" onclick="app.setRating(4)" aria-label="4 stars">★</button>
+          <button type="button" class="star-btn" data-star="5" onclick="app.setRating(5)" aria-label="5 stars">★</button>
+        </div>
+        <p class="rating-hint" id="rating-hint">Tap a star to rate</p>
+        <label class="form-label" for="rating-comment">Comment (optional)</label>
+        <textarea id="rating-comment" class="form-input" rows="3" placeholder="Share details about safety, driving, or honesty…" maxlength="500"></textarea>
+        <div id="rating-error" class="form-error" style="display:none"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" onclick="app.closeRatingModal()">Skip</button>
+          <button type="submit" class="btn-primary">Submit Rating</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Lost Item Report Modal -->
   <div class="modal-overlay" id="lost-item-modal" style="display:none">
     <div class="modal-card">
